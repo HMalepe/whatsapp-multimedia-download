@@ -21,14 +21,18 @@ fs.mkdirSync(config.downloadDir, { recursive: true });
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// Serves the downloaded/compressed video so Twilio/WhatsApp can fetch it.
+// Serves the downloaded/compressed video so Twilio/WhatsApp can fetch it for inline video
+// messages, and so a person can tap the link directly for videos too large to send inline.
+// Content-Disposition: attachment makes a direct browser visit download the file instead of
+// trying to stream/play it inline; Twilio's own media fetch ignores this header and just
+// reads the bytes + Content-Type, so it doesn't affect the inline-video send path.
 app.get('/media/:file', (req, res) => {
   const file = req.params.file;
   if (!/^[a-f0-9-]+\.mp4$/i.test(file)) {
     return res.status(400).send('Bad request');
   }
   const filePath = path.join(config.downloadDir, file);
-  res.sendFile(filePath, (err) => {
+  res.download(filePath, 'video.mp4', (err) => {
     if (err && !res.headersSent) res.status(404).send('Not found');
   });
 });
