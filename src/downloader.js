@@ -94,7 +94,15 @@ function buildYtDlpArgs(url, outputTemplate) {
     '--restrict-filenames',
     '-f',
     buildFormatSelector(),
+    // --merge-output-format only takes effect when yt-dlp actually merges two
+    // separately-fetched video+audio streams. Our lower-priority fallback selectors
+    // (no ext filter, or the bare "best") can pick a single already-muxed format
+    // instead, which --merge-output-format would silently leave in its native
+    // container (e.g. .webm) -- --remux-video forces that case into mp4 too, so the
+    // output path is always predictably `${jobId}.mp4`.
     '--merge-output-format',
+    'mp4',
+    '--remux-video',
     'mp4',
   ];
 

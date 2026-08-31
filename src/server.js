@@ -19,6 +19,19 @@ app.use(express.json());
 
 fs.mkdirSync(config.downloadDir, { recursive: true });
 
+// scheduleCleanup's timers only live in memory, so a restart forgets about any files
+// left over from before it -- sweep stale video output on boot so they don't linger
+// forever. cookies.txt (written by the downloader module) is deliberately untouched.
+for (const f of fs.readdirSync(config.downloadDir)) {
+  if (/\.mp4$/i.test(f)) {
+    fs.unlink(path.join(config.downloadDir, f), () => {});
+  }
+}
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled promise rejection:', err);
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Serves the downloaded/compressed video so Twilio/WhatsApp can fetch it for inline video
