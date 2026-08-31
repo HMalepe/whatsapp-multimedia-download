@@ -35,7 +35,9 @@ Service and applicable copyright law in your jurisdiction.
    own hard limit, not something this app can raise), it's sent as a normal video message.
    Otherwise you get a text reply with a direct link to download it from that URL instead,
    since WhatsApp would reject an inline video message above that size.
-6. Files are deleted automatically after `FILE_TTL_MINUTES`.
+6. Files are deleted automatically after `FILE_TTL_MINUTES`. Job history (link, thumbnail,
+   status, size, error) persists separately for `DASHBOARD_HISTORY_DAYS`, so the dashboard
+   still shows what you downloaded even after the video file itself has expired.
 
 ## Prerequisites
 
@@ -77,8 +79,9 @@ npm start
    `Dockerfile`).
 2. In Railway's project settings, set the environment variables from `.env.example`
    (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`,
-   `ALLOWED_WHATSAPP_NUMBERS`, `MAX_MEDIA_MB`, `FILE_TTL_MINUTES`). Leave `PORT` unset —
-   Railway injects it automatically.
+   `ALLOWED_WHATSAPP_NUMBERS`, `MAX_MEDIA_MB`, `FILE_TTL_MINUTES`, and `DASHBOARD_USER`
+   / `DASHBOARD_PASSWORD` if you want the owner dashboard). Leave `PORT` unset — Railway
+   injects it automatically.
 3. Generate a public domain for the service (Railway → Settings → Networking → Generate
    Domain), then set `PUBLIC_BASE_URL` to that `https://...up.railway.app` URL.
 4. Deploy. Confirm `https://<your-domain>/health` returns `{"ok":true}`.
@@ -115,6 +118,31 @@ https://www.youtube.com/watch?v=...
 
 You'll get an immediate "downloading" reply, followed by the video itself once it's ready
 (usually 10–60 seconds depending on length/platform).
+
+## Owner dashboard
+
+Visit `https://<your-domain>/dashboard` for a private page listing every video you've ever
+sent to the bot — thumbnails, live status, search, platform filters, and one-click
+retry/delete. It's disabled (404) until you set both `DASHBOARD_USER` and
+`DASHBOARD_PASSWORD`, since this app otherwise sits on a public Railway URL and the dashboard
+shows your download history; once set, the whole `/dashboard` and `/thumbs` surface is
+gated behind HTTP Basic Auth (your browser will prompt for the credentials once and remember
+them for the session).
+
+What you get:
+- **Live cards** for every job — a shimmering "downloading…" state with an elapsed timer,
+  then a thumbnail (grabbed ~10% into the clip so it's not just a black intro frame), duration
+  badge, resolution, file size, and a color-coded platform tag. The page polls every 3
+  seconds and toasts you when a video finishes or fails.
+- **Click a thumbnail** to play the video right there in a modal, no download needed.
+- **Search** by URL, filter by platform, sort by newest/oldest/largest/longest.
+- **Retry** re-queues the same link as a new job — handy for a failed download or one whose
+  video file has since expired (the thumbnail and metadata stick around, grayed out, as a
+  history record — only the raw video is deleted on `FILE_TTL_MINUTES`).
+- **Delete** removes a job's file, thumbnail, and history entry for good.
+
+Job history and thumbnails live in `DATA_DIR`/`DOWNLOAD_DIR` and are pruned automatically
+after `DASHBOARD_HISTORY_DAYS` (default 7) so they don't grow forever.
 
 ## Improving reliability
 
@@ -173,14 +201,18 @@ release (the Dockerfile already installs with `-U`, so a fresh build pulls the l
 
 ```
 src/
-  server.js      Express app, webhook + media serving routes
-  config.js       Environment variable loading/validation
-  security.js     Allowlist check + Twilio signature validation
-  whatsapp.js     Twilio client (send text / send media)
-  downloader.js   yt-dlp download + ffmpeg compression
-  storage.js      Served-file URL helper + scheduled cleanup
-  helpers.js      URL extraction from message text
-  queue.js        In-process concurrency-capped job queue
-  dedupe.js       Twilio MessageSid dedupe (ignores webhook retries)
-Dockerfile        Node + Python/yt-dlp + ffmpeg runtime for Railway
+  server.js        Express app: webhook, media/thumb serving, dashboard API
+  config.js        Environment variable loading/validation
+  security.js      Allowlist check + Twilio signature validation
+  dashboardAuth.js HTTP Basic Auth guarding /dashboard, /thumbs
+  whatsapp.js      Twilio client (send text / send media)
+  downloader.js    yt-dlp download + ffmpeg compression + thumbnail/metadata
+  storage.js       Served-file URL helper + scheduled cleanup
+  jobsStore.js     JSON-file-backed job history for the dashboard
+  helpers.js       URL extraction + platform detection from message text
+  queue.js         In-process concurrency-capped job queue
+  dedupe.js        Twilio MessageSid dedupe (ignores webhook retries)
+public/
+  dashboard.html   The owner dashboard (self-contained, no build step)
+Dockerfile         Node + Python/yt-dlp + ffmpeg runtime for Railway
 ```

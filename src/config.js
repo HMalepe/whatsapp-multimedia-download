@@ -40,6 +40,17 @@ const config = {
   downloadRetries: Number(process.env.DOWNLOAD_RETRIES || 2),
   maxConcurrentJobs: Number(process.env.MAX_CONCURRENT_JOBS || 1),
   dedupeTtlMs: Number(process.env.DEDUPE_TTL_MINUTES || 30) * 60 * 1000,
+
+  // Owner dashboard (/dashboard) -- a private, password-protected page listing every
+  // download with thumbnails. Disabled unless both credentials are set, since this app
+  // otherwise sits on a public Railway URL and the dashboard shows your download history.
+  dashboardUser: process.env.DASHBOARD_USER || null,
+  dashboardPassword: process.env.DASHBOARD_PASSWORD || null,
+  dashboardEnabled: Boolean(process.env.DASHBOARD_USER && process.env.DASHBOARD_PASSWORD),
+  // How long job history (metadata + thumbnail) is kept after the video file itself has
+  // expired and been deleted -- independent of, and longer than, FILE_TTL_MINUTES.
+  dashboardHistoryMs: Number(process.env.DASHBOARD_HISTORY_DAYS || 7) * 24 * 60 * 60 * 1000,
+  dataDir: path.resolve(process.cwd(), process.env.DATA_DIR || 'data'),
 };
 
 module.exports = config;

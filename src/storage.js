@@ -4,14 +4,15 @@ const config = require('./config');
 
 const timers = new Map();
 
-function scheduleCleanup(filePath) {
+function scheduleCleanup(filePath, onExpire, ttlMs = config.fileTtlMs) {
   const existing = timers.get(filePath);
   if (existing) clearTimeout(existing);
 
   const timer = setTimeout(() => {
     fs.unlink(filePath).catch(() => {});
     timers.delete(filePath);
-  }, config.fileTtlMs);
+    if (onExpire) onExpire();
+  }, Math.max(0, ttlMs));
   timer.unref();
   timers.set(filePath, timer);
 }

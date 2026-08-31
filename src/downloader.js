@@ -226,4 +226,58 @@ async function compressToFit(inputPath, maxBytes, jobId) {
   throw new Error('Unable to compress video under the WhatsApp size limit');
 }
 
-module.exports = { downloadVideo, compressToFit, getDuration };
+// Resolution + duration for the dashboard's video cards.
+async function getVideoMeta(filePath) {
+  const { stdout } = await run('ffprobe', [
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'stream=width,height:format=duration',
+    '-of',
+    'json',
+    filePath,
+  ]);
+
+  let data = {};
+  try {
+    data = JSON.parse(stdout);
+  } catch {
+    // Malformed ffprobe output -- fall back to unknowns rather than fail the whole job.
+  }
+  const stream = (data.streams && data.streams[0]) || {};
+  const duration = parseFloat(data.format && data.format.duration);
+
+  return {
+    width: stream.width || null,
+    height: stream.height || null,
+    durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : null,
+  };
+}
+
+// A single representative frame for the dashboard's video cards, taken ~10% into the
+// clip (rather than frame 0, which is often a black/blank intro frame).
+async function generateThumbnail(filePath, outPath, durationSeconds) {
+  const seekTo = durationSeconds ? Math.min(durationSeconds * 0.1, Math.max(durationSeconds - 0.1, 0)) : 0;
+  await run(
+    'ffmpeg',
+    [
+      '-y',
+      '-ss',
+      seekTo.toFixed(2),
+      '-i',
+      filePath,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=480:-2',
+      '-q:v',
+      '4',
+      outPath,
+    ],
+    { timeoutMs: 60 * 1000 }
+  );
+}
+
+module.exports = { downloadVideo, compressToFit, getDuration, getVideoMeta, generateThumbnail };
