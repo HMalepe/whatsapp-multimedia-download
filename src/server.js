@@ -10,6 +10,8 @@ const { isAllowedNumber, validateTwilioSignature } = require('./security');
 const { downloadVideo, compressToFit } = require('./downloader');
 const { scheduleCleanup, mediaUrlFor, cleanupJobFiles } = require('./storage');
 const { sendText, sendMedia } = require('./whatsapp');
+const { isDuplicate } = require('./dedupe');
+const { enqueue } = require('./queue');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -34,8 +36,16 @@ app.get('/media/:file', (req, res) => {
 app.post('/whatsapp/webhook', validateTwilioSignature, (req, res) => {
   const from = req.body.From;
   const body = req.body.Body || '';
+  const messageSid = req.body.MessageSid;
 
   const twiml = new MessagingResponse();
+
+  // Twilio retries the webhook if it doesn't get a fast response, which would otherwise
+  // re-trigger a download for the same message. Reply 200 with no new message and skip it.
+  if (isDuplicate(messageSid)) {
+    res.type('text/xml').send(twiml.toString());
+    return;
+  }
 
   if (!isAllowedNumber(from)) {
     twiml.message('This number is not authorized to use this bot.');
@@ -53,8 +63,9 @@ app.post('/whatsapp/webhook', validateTwilioSignature, (req, res) => {
   twiml.message('⏳ Got it, downloading the best quality version now. This can take a minute for longer videos...');
   res.type('text/xml').send(twiml.toString());
 
-  // Process asynchronously so we don't block the webhook response.
-  processVideoRequest(from, url).catch((err) => {
+  // Queued so at most MAX_CONCURRENT_JOBS downloads/compressions run at once, and
+  // processed asynchronously so we don't block the webhook response.
+  enqueue(() => processVideoRequest(from, url)).catch((err) => {
     console.error('Unhandled error processing request:', err);
   });
 });

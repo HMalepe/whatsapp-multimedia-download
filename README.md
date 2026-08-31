@@ -151,8 +151,12 @@ release (the Dockerfile already installs with `-U`, so a fresh build pulls the l
 - **Genuinely private/login-only content still won't work**, even with cookies and
   impersonation configured (see "Improving reliability" above) — e.g. someone else's private
   LinkedIn post, a deleted video, or a region-locked one your account can't see either.
-- **Single-request processing**: this is built for personal, occasional use — it does not
-  queue/parallelize multiple simultaneous downloads.
+- **Bounded concurrency**: at most `MAX_CONCURRENT_JOBS` (default 1) downloads run at once;
+  anything beyond that queues in-memory and processes in order. This is built for personal,
+  occasional use, not for parallelizing many simultaneous downloads.
+- **Duplicate-safe**: repeat webhook deliveries for the same inbound message (Twilio retries
+  if it doesn't get a fast enough response) are recognized by `MessageSid` and ignored, so a
+  slow response never triggers two downloads for one link.
 - **Security**: only numbers listed in `ALLOWED_WHATSAPP_NUMBERS` can trigger downloads, and
   incoming webhook requests are verified against Twilio's request signature
   (`VALIDATE_TWILIO_SIGNATURE=true` by default) to stop spoofed requests.
@@ -168,5 +172,7 @@ src/
   downloader.js   yt-dlp download + ffmpeg compression
   storage.js      Served-file URL helper + scheduled cleanup
   helpers.js      URL extraction from message text
+  queue.js        In-process concurrency-capped job queue
+  dedupe.js       Twilio MessageSid dedupe (ignores webhook retries)
 Dockerfile        Node + Python/yt-dlp + ffmpeg runtime for Railway
 ```

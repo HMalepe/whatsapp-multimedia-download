@@ -31,6 +31,8 @@ const config = {
   cookiesFile: process.env.COOKIES_FILE || null,
   impersonateBrowser: process.env.IMPERSONATE_BROWSER !== 'false',
   downloadRetries: Number(process.env.DOWNLOAD_RETRIES || 2),
+  maxConcurrentJobs: Number(process.env.MAX_CONCURRENT_JOBS || 1),
+  dedupeTtlMs: Number(process.env.DEDUPE_TTL_MINUTES || 30) * 60 * 1000,
 };
 
 module.exports = config;
