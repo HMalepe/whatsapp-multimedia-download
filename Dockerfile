@@ -8,7 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir --break-system-packages yt-dlp
+# curl_cffi enables yt-dlp's --impersonate flag (browser TLS/HTTP fingerprinting),
+# which helps get past bot-detection on X/Twitter, Instagram, etc.
+RUN pip3 install --no-cache-dir --break-system-packages -U yt-dlp[default,curl-cffi]
 
 WORKDIR /app
 

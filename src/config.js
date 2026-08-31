@@ -23,6 +23,14 @@ const config = {
   fileTtlMs: Number(process.env.FILE_TTL_MINUTES || 60) * 60 * 1000,
   port: Number(process.env.PORT || 3000),
   validateTwilioSignature: process.env.VALIDATE_TWILIO_SIGNATURE !== 'false',
+  // Netscape-format cookies.txt content, base64-encoded, exported from a logged-in browser.
+  // This lets yt-dlp fetch content that requires being logged in (most LinkedIn videos,
+  // some Instagram/Facebook/X posts, age-gated YouTube videos). See README for how to export.
+  cookiesBase64: process.env.COOKIES_BASE64 || null,
+  // Path to an existing cookies.txt on disk (alternative to COOKIES_BASE64).
+  cookiesFile: process.env.COOKIES_FILE || null,
+  impersonateBrowser: process.env.IMPERSONATE_BROWSER !== 'false',
+  downloadRetries: Number(process.env.DOWNLOAD_RETRIES || 2),
 };
 
 module.exports = config;

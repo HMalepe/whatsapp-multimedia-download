@@ -110,16 +110,47 @@ https://www.youtube.com/watch?v=...
 You'll get an immediate "downloading" reply, followed by the video itself once it's ready
 (usually 10–60 seconds depending on length/platform).
 
+## Improving reliability
+
+Most download failures aren't missing `yt-dlp` support — they're login walls or
+bot-detection. Two things close most of that gap:
+
+1. **Cookies from a logged-in browser session.** This is the biggest lever, especially for
+   LinkedIn, and it also helps Instagram, Facebook, and X for content that's rate-limited or
+   gated for anonymous requests:
+   - Install a browser extension like "Get cookies.txt LOCALLY" (Chrome/Firefox).
+   - Log into linkedin.com / instagram.com / x.com / facebook.com in that browser.
+   - Export cookies for each site into one combined `cookies.txt` (Netscape format).
+   - Base64-encode it and set it as `COOKIES_BASE64` in your environment:
+     `base64 -w0 cookies.txt` (macOS: `base64 -i cookies.txt`).
+   - The app decodes it to a file at startup and passes it to every `yt-dlp` call.
+   - Since these are *your own* session cookies giving the bot access to *your own* logged-in
+     view, treat `COOKIES_BASE64` as a secret — only set it via Railway's environment
+     variables, never commit it. Re-export periodically, as sites expire login sessions.
+
+2. **Browser impersonation** (`IMPERSONATE_BROWSER=true`, on by default) makes `yt-dlp` mimic
+   a real browser's TLS/HTTP fingerprint via `curl_cffi`, which helps get past bot-detection
+   on X/Twitter and others even without cookies.
+
+The app also **automatically retries** transient failures (network errors, rate limiting)
+with a short backoff (`DOWNLOAD_RETRIES`, default 2 extra attempts), while failing fast on
+errors that a retry can't fix (private/removed content, login-required, unsupported URL).
+
+Even with both of these, expect occasional failures: a platform can still rate-limit or
+block a given request, and any post that's been deleted, made private, or is genuinely
+login-only (e.g. someone else's private LinkedIn post) will never be fetchable. Also keep
+`yt-dlp` itself current — platforms change their sites often and extraction breaks until
+`yt-dlp` is updated; rebuild the Docker image periodically to pick up the latest `yt-dlp`
+release (the Dockerfile already installs with `-U`, so a fresh build pulls the latest).
+
 ## Limitations
 
 - **WhatsApp media size cap (~16MB for video)**: long or high-resolution videos get
   automatically compressed to fit, which trades away some quality. There's no way around this
   cap — it's enforced by WhatsApp, not this app.
-- **LinkedIn / private or login-gated content**: `yt-dlp` can't fetch anything that requires
-  being logged in, so private posts, age-gated content, or platforms that tighten
-  anti-scraping measures may intermittently fail. When a platform changes its site and breaks
-  extraction, upgrading `yt-dlp` (`pip install -U yt-dlp`) usually fixes it — consider
-  updating it periodically in the Dockerfile.
+- **Genuinely private/login-only content still won't work**, even with cookies and
+  impersonation configured (see "Improving reliability" above) — e.g. someone else's private
+  LinkedIn post, a deleted video, or a region-locked one your account can't see either.
 - **Single-request processing**: this is built for personal, occasional use — it does not
   queue/parallelize multiple simultaneous downloads.
 - **Security**: only numbers listed in `ALLOWED_WHATSAPP_NUMBERS` can trigger downloads, and

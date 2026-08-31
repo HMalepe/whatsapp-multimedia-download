@@ -1,7 +1,46 @@
 const { spawn } = require('child_process');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const config = require('./config');
+
+// Resolve a cookies.txt to hand yt-dlp, if one was configured. Using cookies from a
+// logged-in browser session is what actually gets sites like LinkedIn, Instagram and
+// X/Twitter to serve content that anonymous requests get blocked or rate-limited on.
+function resolveCookiesFile() {
+  if (config.cookiesFile) return config.cookiesFile;
+  if (config.cookiesBase64) {
+    fsSync.mkdirSync(config.downloadDir, { recursive: true });
+    const cookiesPath = path.join(config.downloadDir, 'cookies.txt');
+    fsSync.writeFileSync(cookiesPath, Buffer.from(config.cookiesBase64, 'base64'));
+    return cookiesPath;
+  }
+  return null;
+}
+
+const cookiesFilePath = resolveCookiesFile();
+
+// Errors that retrying won't fix -- fail fast on these instead of burning retries.
+const NON_RETRYABLE_PATTERNS = [
+  /unsupported url/i,
+  /private video/i,
+  /video unavailable/i,
+  /this (post|video|content) (is|has been) (private|removed|unavailable)/i,
+  /requires? (a )?login/i,
+  /sign in to confirm/i,
+  /copyright/i,
+  /no video formats found/i,
+  /unable to extract/i,
+];
+
+function isRetryable(err) {
+  const msg = err.message || '';
+  return !NON_RETRYABLE_PATTERNS.some((re) => re.test(msg));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -30,16 +69,8 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
   });
 }
 
-/**
- * Downloads the highest-quality available video+audio for a URL, merged to mp4,
- * using yt-dlp. Works across YouTube, TikTok, X/Twitter, Instagram, Reddit,
- * Facebook, and (when public) LinkedIn -- support depends on yt-dlp's extractors.
- */
-async function downloadVideo(url, jobId) {
-  await fs.mkdir(config.downloadDir, { recursive: true });
-  const outputTemplate = path.join(config.downloadDir, `${jobId}.%(ext)s`);
-
-  await run('yt-dlp', [
+function buildYtDlpArgs(url, outputTemplate) {
+  const args = [
     '--no-playlist',
     '--no-warnings',
     '--restrict-filenames',
@@ -47,14 +78,53 @@ async function downloadVideo(url, jobId) {
     'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     '--merge-output-format',
     'mp4',
-    '-o',
-    outputTemplate,
-    url,
-  ]);
+  ];
 
-  const finalPath = path.join(config.downloadDir, `${jobId}.mp4`);
-  await fs.access(finalPath);
-  return finalPath;
+  if (cookiesFilePath) {
+    args.push('--cookies', cookiesFilePath);
+  }
+  if (config.impersonateBrowser) {
+    // Mimics a real browser's TLS/HTTP fingerprint, which helps get past the
+    // bot-detection that X/Twitter, Instagram and others apply to plain requests.
+    // Requires the curl_cffi Python package (installed in the Dockerfile); yt-dlp
+    // silently ignores this if that dependency isn't available.
+    args.push('--impersonate', 'chrome');
+  }
+
+  args.push('-o', outputTemplate, url);
+  return args;
+}
+
+/**
+ * Downloads the highest-quality available video+audio for a URL, merged to mp4,
+ * using yt-dlp. Works across YouTube, TikTok, X/Twitter, Instagram, Reddit,
+ * Facebook, and (when public, or with cookies configured) LinkedIn -- support
+ * depends on yt-dlp's extractors. Retries transient failures (network hiccups,
+ * rate limiting) with a short backoff; login/removed/unsupported errors fail fast.
+ */
+async function downloadVideo(url, jobId) {
+  await fs.mkdir(config.downloadDir, { recursive: true });
+  const outputTemplate = path.join(config.downloadDir, `${jobId}.%(ext)s`);
+  const args = buildYtDlpArgs(url, outputTemplate);
+
+  const maxAttempts = Math.max(1, config.downloadRetries + 1);
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await run('yt-dlp', args);
+      const finalPath = path.join(config.downloadDir, `${jobId}.mp4`);
+      await fs.access(finalPath);
+      return finalPath;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts && isRetryable(err)) {
+        await sleep(1500 * attempt);
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastErr;
 }
 
 async function getDuration(filePath) {
