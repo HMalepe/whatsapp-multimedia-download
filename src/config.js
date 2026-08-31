@@ -18,7 +18,14 @@ const config = {
     .split(',')
     .map((n) => n.trim())
     .filter(Boolean),
-  maxMediaBytes: Number(process.env.MAX_MEDIA_MB || 16) * 1024 * 1024,
+  // Overall ceiling we'll compress/download a video down to.
+  maxMediaBytes: Number(process.env.MAX_MEDIA_MB || 100) * 1024 * 1024,
+  // WhatsApp's own hard cap for a playable inline video message -- not really adjustable,
+  // this is enforced by WhatsApp/Twilio, not by this app. Anything under this is sent as a
+  // normal video message; anything over it (up to maxMediaBytes) is sent as a download link
+  // instead, since WhatsApp will reject an inline video message above this size.
+  inlineVideoBytes: Number(process.env.WHATSAPP_INLINE_VIDEO_MB || 16) * 1024 * 1024,
+  targetHeight: Number(process.env.TARGET_HEIGHT || 720),
   downloadDir: path.resolve(process.cwd(), process.env.DOWNLOAD_DIR || 'downloads'),
   fileTtlMs: Number(process.env.FILE_TTL_MINUTES || 60) * 60 * 1000,
   port: Number(process.env.PORT || 3000),

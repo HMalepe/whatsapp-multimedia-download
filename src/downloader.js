@@ -69,13 +69,31 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
   });
 }
 
+// Always targets `config.targetHeight` (720p by default) rather than the absolute
+// best available: mp4 first, then mov, then any container at that resolution, and
+// only drops below that resolution as a last resort if nothing at 720p exists at
+// all. Never trims duration -- full-length video is always requested; only
+// resolution/bitrate are ever traded down to hit a size target.
+function buildFormatSelector() {
+  const h = config.targetHeight;
+  return [
+    `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]`,
+    `best[height<=${h}][ext=mp4]`,
+    `bestvideo[height<=${h}][ext=mov]+bestaudio[ext=m4a]`,
+    `best[height<=${h}][ext=mov]`,
+    `bestvideo[height<=${h}]+bestaudio`,
+    `best[height<=${h}]`,
+    'best',
+  ].join('/');
+}
+
 function buildYtDlpArgs(url, outputTemplate) {
   const args = [
     '--no-playlist',
     '--no-warnings',
     '--restrict-filenames',
     '-f',
-    'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+    buildFormatSelector(),
     '--merge-output-format',
     'mp4',
   ];
@@ -142,9 +160,11 @@ async function getDuration(filePath) {
 }
 
 /**
- * Re-encodes a video to fit under maxBytes by targeting a computed bitrate.
- * Falls back to progressively lower resolutions if a single bitrate pass
- * still doesn't land under the target (very short/high-motion clips).
+ * Re-encodes a video to fit under maxBytes by targeting a computed bitrate, at
+ * config.targetHeight (720p by default) -- never above it, since the source was
+ * already downloaded at that resolution. Full duration is always preserved; only
+ * resolution/bitrate step down (720p -> 480p -> 360p) if a single bitrate pass at
+ * 720p still doesn't land under the target (very long or high-motion video).
  */
 async function compressToFit(inputPath, maxBytes, jobId) {
   const duration = await getDuration(inputPath);
@@ -153,7 +173,9 @@ async function compressToFit(inputPath, maxBytes, jobId) {
   }
 
   const audioBitrateKbps = 96;
-  const resolutions = [null, 720, 480, 360]; // null = keep original resolution
+  const resolutions = [config.targetHeight, 480, 360].filter(
+    (h, i, arr) => arr.indexOf(h) === i && h <= config.targetHeight
+  );
 
   for (const height of resolutions) {
     const targetTotalKbps = (maxBytes * 8) / duration / 1000;

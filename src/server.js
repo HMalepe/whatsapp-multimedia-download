@@ -93,7 +93,19 @@ async function processVideoRequest(to, url) {
     }
 
     scheduleCleanup(finalPath);
-    await sendMedia(to, '✅ Here is your video.', mediaUrlFor(jobId));
+
+    const finalSize = fs.statSync(finalPath).size;
+    if (finalSize <= config.inlineVideoBytes) {
+      await sendMedia(to, '✅ Here is your video.', mediaUrlFor(jobId));
+    } else {
+      // WhatsApp rejects inline video messages above ~16MB. Above that (up to
+      // maxMediaBytes) we hand back a direct download link instead of a failed send.
+      await sendText(
+        to,
+        `✅ Your video is ready (${(finalSize / (1024 * 1024)).toFixed(1)}MB) but too large ` +
+          `for WhatsApp to play inline. Tap to download:\n${mediaUrlFor(jobId)}`
+      );
+    }
   } catch (err) {
     console.error(`Job ${jobId} failed for ${url}:`, err.message);
     await cleanupJobFiles(jobId);

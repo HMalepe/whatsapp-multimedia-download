@@ -1,8 +1,9 @@
 # whatsapp-multimedia-download
 
 Send a video link over WhatsApp to your own Twilio number and get the video sent back,
-downloaded at the highest quality that will fit in a WhatsApp message. Powered by
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) under the hood, so it works with links from:
+downloaded at 720p (`TARGET_HEIGHT`), preferring MP4 or MOV, always at full length — never
+trimmed. Powered by [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) under the hood, so it works
+with links from:
 
 - YouTube
 - TikTok
@@ -22,13 +23,18 @@ Service and applicable copyright law in your jurisdiction.
 1. You send a message containing a video link to your Twilio WhatsApp number.
 2. Twilio POSTs the message to this app's `/whatsapp/webhook` endpoint.
 3. The app checks the sender is on your allowlist, replies immediately with "downloading...",
-   then in the background runs `yt-dlp` to fetch the best available video+audio and merges it
-   to `.mp4` with `ffmpeg`.
-4. If the file is bigger than WhatsApp's media limit (~16MB for video), it's re-encoded down
-   (first at the original resolution with a lower bitrate, then progressively down to 720p /
-   480p / 360p) until it fits.
-5. The app serves the final file from `/media/:id.mp4` on its own public URL, and calls the
-   Twilio API to send that URL back to you as a WhatsApp media message.
+   then in the background runs `yt-dlp` to fetch video+audio at `TARGET_HEIGHT` (720p by
+   default), preferring an MP4 source, then MOV, then whatever's available at that
+   resolution (or lower, only if nothing at 720p exists at all), merged to `.mp4` with
+   `ffmpeg`. The full video is always fetched — duration is never trimmed.
+4. If the file is bigger than `MAX_MEDIA_MB` (default 100MB), it's re-encoded down (lower
+   bitrate at 720p first, then progressively 480p / 360p) until it fits — duration still
+   isn't touched, only bitrate/resolution trade down.
+5. The app serves the final file from `/media/:id.mp4` on its own public URL. If it's small
+   enough for WhatsApp to play inline (`WHATSAPP_INLINE_VIDEO_MB`, default 16MB — WhatsApp's
+   own hard limit, not something this app can raise), it's sent as a normal video message.
+   Otherwise you get a text reply with a direct link to download it from that URL instead,
+   since WhatsApp would reject an inline video message above that size.
 6. Files are deleted automatically after `FILE_TTL_MINUTES`.
 
 ## Prerequisites
@@ -145,9 +151,11 @@ release (the Dockerfile already installs with `-U`, so a fresh build pulls the l
 
 ## Limitations
 
-- **WhatsApp media size cap (~16MB for video)**: long or high-resolution videos get
-  automatically compressed to fit, which trades away some quality. There's no way around this
-  cap — it's enforced by WhatsApp, not this app.
+- **WhatsApp's ~16MB inline video cap is a hard platform limit**, not something this app can
+  raise. Videos under it play inline in the chat; videos over it (up to `MAX_MEDIA_MB`,
+  default 100MB) are sent as a download link instead, since WhatsApp would reject them as a
+  video message. Very long videos that still can't fit under `MAX_MEDIA_MB` even at 360p will
+  fail outright — that's the genuine ceiling for very long/high-motion content.
 - **Genuinely private/login-only content still won't work**, even with cookies and
   impersonation configured (see "Improving reliability" above) — e.g. someone else's private
   LinkedIn post, a deleted video, or a region-locked one your account can't see either.
