@@ -110,6 +110,51 @@
   }
   .stat .label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
+  /* ---------- Paste bar ---------- */
+  .paste-card {
+    background: linear-gradient(135deg, #1a1530, #101526);
+    border: 1px solid #3a2f66;
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+  }
+  .paste-form { display: flex; gap: 10px; flex-wrap: wrap; }
+  .paste-input-wrap { flex: 1 1 320px; position: relative; }
+  .paste-input-wrap::before {
+    content: "🔗"; position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    font-size: 15px; opacity: .8; pointer-events: none;
+  }
+  .paste-form input {
+    width: 100%; background: #0c0e15; border: 1px solid #322a54;
+    color: var(--text); border-radius: 12px; padding: 13px 16px 13px 40px;
+    font-size: 14px; outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .paste-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #7c6cff2a; }
+  .paste-form input::placeholder { color: var(--text-faint); }
+  .paste-form button {
+    background: linear-gradient(135deg, var(--accent), #6a5cf0);
+    color: #fff; border: none; border-radius: 12px; padding: 0 22px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: transform .15s, opacity .15s; min-width: 130px; justify-content: center;
+  }
+  .paste-form button:hover:not(:disabled) { transform: translateY(-1px); }
+  .paste-form button:disabled { opacity: .6; cursor: default; }
+  .paste-hint { font-size: 11.5px; color: var(--text-faint); margin-top: 9px; }
+  .paste-error {
+    margin-top: 10px; font-size: 12.5px; color: #ff9aa4;
+    background: var(--red-soft); border-radius: 8px; padding: 8px 11px; display: none;
+  }
+  .paste-error.show { display: block; }
+  .btn-spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #ffffff44; border-top-color: #fff;
+    animation: spin .7s linear infinite; display: none;
+  }
+  .paste-form button.loading .btn-spinner { display: inline-block; }
+  .paste-form button.loading .btn-label { display: none; }
+
   /* ---------- Toolbar ---------- */
   .toolbar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -298,6 +343,21 @@
         <a class="wa-link" id="waLink" href="#" target="_blank" rel="noopener">💬 Message the bot</a>
       </div>
     </header>
+
+    <div class="paste-card">
+      <form class="paste-form" id="pasteForm">
+        <div class="paste-input-wrap">
+          <input id="pasteUrl" type="url" inputmode="url" autocomplete="off"
+                 placeholder="Paste a YouTube, TikTok, X, Instagram, Facebook, Reddit or LinkedIn link…" required />
+        </div>
+        <button type="submit" id="pasteBtn">
+          <span class="btn-spinner"></span>
+          <span class="btn-label">⬇ Fetch video</span>
+        </button>
+      </form>
+      <div class="paste-hint">No need to text the bot — paste a link here and it shows up below the moment it starts downloading.</div>
+      <div class="paste-error" id="pasteError"></div>
+    </div>
 
     <div class="stats" id="stats"></div>
 
@@ -567,6 +627,37 @@
 
     document.getElementById('search').addEventListener('input', (e) => { state.search = e.target.value; render(); });
     document.getElementById('sort').addEventListener('change', (e) => { state.sort = e.target.value; render(); });
+
+    document.getElementById('pasteForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('pasteUrl');
+      const btn = document.getElementById('pasteBtn');
+      const errorEl = document.getElementById('pasteError');
+      const url = input.value.trim();
+
+      errorEl.classList.remove('show');
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/dashboard/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not start that download.');
+        input.value = '';
+        toast('⏳ Started', shortUrl(url));
+        fetchJobs();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.add('show');
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    });
 
     // Ticks the "downloading" elapsed-time labels without waiting for the next poll.
     setInterval(() => {

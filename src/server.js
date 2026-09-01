@@ -196,16 +196,20 @@ async function processVideoRequest(jobId, to, url) {
       videoExpiresAt: Date.now() + config.fileTtlMs,
     });
 
-    if (deliveryType === 'inline') {
-      await sendMedia(to, '✅ Here is your video.', mediaUrlFor(jobId));
-    } else {
-      // WhatsApp rejects inline video messages above ~16MB. Above that (up to
-      // maxMediaBytes) we hand back a direct download link instead of a failed send.
-      await sendText(
-        to,
-        `✅ Your video is ready (${(finalSize / (1024 * 1024)).toFixed(1)}MB) but too large ` +
-          `for WhatsApp to play inline. Tap to download:\n${mediaUrlFor(jobId)}`
-      );
+    // Jobs started from the dashboard (paste-a-link) have no WhatsApp sender to notify --
+    // the dashboard's own polling already shows the result, so skip the Twilio send.
+    if (to) {
+      if (deliveryType === 'inline') {
+        await sendMedia(to, '✅ Here is your video.', mediaUrlFor(jobId));
+      } else {
+        // WhatsApp rejects inline video messages above ~16MB. Above that (up to
+        // maxMediaBytes) we hand back a direct download link instead of a failed send.
+        await sendText(
+          to,
+          `✅ Your video is ready (${(finalSize / (1024 * 1024)).toFixed(1)}MB) but too large ` +
+            `for WhatsApp to play inline. Tap to download:\n${mediaUrlFor(jobId)}`
+        );
+      }
     }
   } catch (err) {
     console.error(`Job ${jobId} failed for ${url}:`, err.message);
@@ -215,10 +219,12 @@ async function processVideoRequest(jobId, to, url) {
       completedAt: Date.now(),
       error: errorMessageFor(err),
     });
-    await sendText(
-      to,
-      `❌ Sorry, I couldn't download that video. ${errorMessageFor(err)}`
-    ).catch((sendErr) => console.error('Failed to notify user of error:', sendErr));
+    if (to) {
+      await sendText(
+        to,
+        `❌ Sorry, I couldn't download that video. ${errorMessageFor(err)}`
+      ).catch((sendErr) => console.error('Failed to notify user of error:', sendErr));
+    }
   }
 }
 
@@ -250,6 +256,26 @@ app.get('/dashboard/api/jobs', requireDashboardAuth, (req, res) => {
     thumbnailUrl: job.thumbnailAvailable ? `/thumbs/${job.id}.jpg` : null,
   }));
   res.json({ jobs, whatsappNumber: config.twilioWhatsAppNumber });
+});
+
+// Lets the owner paste a link directly into the dashboard instead of going through
+// WhatsApp. `from` is left null -- there's no phone number to notify, the dashboard's
+// own polling already shows the result.
+app.post('/dashboard/api/jobs', requireDashboardAuth, (req, res) => {
+  const url = String((req.body && req.body.url) || '').trim();
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return res.status(400).json({ error: 'Enter a valid video link.' });
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return res.status(400).json({ error: 'Enter a valid video link.' });
+  }
+
+  const jobId = startJob(url, null);
+  res.json({ ok: true, jobId });
 });
 
 app.delete('/dashboard/api/jobs/:id', requireDashboardAuth, async (req, res) => {

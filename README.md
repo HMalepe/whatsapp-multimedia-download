@@ -130,6 +130,8 @@ gated behind HTTP Basic Auth (your browser will prompt for the credentials once 
 them for the session).
 
 What you get:
+- **Paste a link right on the dashboard** — no need to go through WhatsApp at all. It shows
+  up as a new card the moment it starts downloading, same as one sent by text.
 - **Live cards** for every job — a shimmering "downloading…" state with an elapsed timer,
   then a thumbnail (grabbed ~10% into the clip so it's not just a black intro frame), duration
   badge, resolution, file size, and a color-coded platform tag. The page polls every 3
