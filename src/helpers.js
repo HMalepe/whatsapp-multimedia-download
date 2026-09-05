@@ -1,9 +1,12 @@
 const URL_REGEX = /(https?:\/\/[^\s]+)/i;
+// Trailing characters that are almost always sentence punctuation rather than part of the
+// URL itself (e.g. "check this out: https://youtu.be/abc123!" or trailing ")" from "(link)").
+const TRAILING_PUNCTUATION = /[.,!?)\]}'"]+$/;
 
 function extractUrl(text) {
   if (!text) return null;
   const match = text.match(URL_REGEX);
-  return match ? match[1] : null;
+  return match ? match[1].replace(TRAILING_PUNCTUATION, '') : null;
 }
 
 const PLATFORMS = [

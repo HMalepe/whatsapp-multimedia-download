@@ -1,0 +1,15 @@
+# Without this, `COPY . .` in the Dockerfile would bundle the local .git history (bloats
+# the image), a developer's local node_modules (built for the host's OS/arch, which could
+# silently overwrite the correctly-built Linux binaries from `npm install` inside the
+# container), and -- worst case -- a local .env file with real secrets baked directly into
+# an image layer if one happens to exist next to the Dockerfile.
+.git
+node_modules
+downloads
+data
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+.DS_Store

@@ -162,7 +162,7 @@ async function processVideoRequest(jobId, to, url) {
     if (stat.size <= config.maxMediaBytes) {
       finalPath = downloadedPath;
     } else {
-      finalPath = await compressToFit(downloadedPath, config.maxMediaBytes, jobId);
+      finalPath = await compressToFit(downloadedPath, config.maxMediaBytes, jobId, meta.durationSeconds);
       fs.unlink(downloadedPath, () => {});
     }
 
@@ -243,6 +243,21 @@ function errorMessageFor(err) {
   return 'The link may be private, unsupported, or region-locked.';
 }
 
+// HTTP Basic Auth credentials, once cached by the browser, are attached automatically to
+// *any* request to this origin -- unlike cookies there's no SameSite protection, so a
+// malicious page could auto-submit a plain HTML form (a "simple" cross-origin POST needs no
+// CORS preflight) to e.g. POST /api/jobs and trigger a download as the logged-in owner,
+// without ever knowing the password. Requiring this header blocks that: a cross-origin page
+// can't add a custom header to a simple request, and adding one to a fetch() would trigger a
+// CORS preflight this server doesn't allow. Our own dashboard.html sets it on every
+// state-changing call.
+function requireSameOriginFetch(req, res, next) {
+  if (req.get('X-Vault-Fetch') !== '1') {
+    return res.status(403).json({ error: 'Cross-origin request blocked.' });
+  }
+  next();
+}
+
 // --- Dashboard (the app) -------------------------------------------------------------
 
 app.get('/', requireDashboardAuth, (req, res) => {
@@ -272,7 +287,7 @@ app.get('/api/jobs', requireDashboardAuth, (req, res) => {
 
 // Paste-a-link: the dashboard's primary way of starting a download. `from` is left null --
 // there's no phone number to notify, the dashboard's own polling already shows the result.
-app.post('/api/jobs', requireDashboardAuth, (req, res) => {
+app.post('/api/jobs', requireDashboardAuth, requireSameOriginFetch, (req, res) => {
   const url = String((req.body && req.body.url) || '').trim();
 
   let parsed;
@@ -289,7 +304,7 @@ app.post('/api/jobs', requireDashboardAuth, (req, res) => {
   res.json({ ok: true, jobId });
 });
 
-app.delete('/api/jobs/:id', requireDashboardAuth, async (req, res) => {
+app.delete('/api/jobs/:id', requireDashboardAuth, requireSameOriginFetch, async (req, res) => {
   const job = jobsStore.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
   await cleanupJobFiles(job.id);
@@ -297,7 +312,7 @@ app.delete('/api/jobs/:id', requireDashboardAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/jobs/:id/retry', requireDashboardAuth, (req, res) => {
+app.post('/api/jobs/:id/retry', requireDashboardAuth, requireSameOriginFetch, (req, res) => {
   const job = jobsStore.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
   const jobId = startJob(job.url, job.from);
@@ -306,7 +321,7 @@ app.post('/api/jobs/:id/retry', requireDashboardAuth, (req, res) => {
 
 // --- GIF export ------------------------------------------------------------------------
 
-app.post('/api/jobs/:id/gif', requireDashboardAuth, async (req, res) => {
+app.post('/api/jobs/:id/gif', requireDashboardAuth, requireSameOriginFetch, async (req, res) => {
   const job = jobsStore.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
   if (job.status !== 'ready' || job.videoExpired) {
@@ -315,16 +330,27 @@ app.post('/api/jobs/:id/gif', requireDashboardAuth, async (req, res) => {
 
   const start = Number(req.body && req.body.start);
   const end = Number(req.body && req.body.end);
-  const fps = Math.min(30, Math.max(4, Number((req.body && req.body.fps) || 12)));
-  const width = Math.min(720, Math.max(120, Number((req.body && req.body.width) || 480)));
+  const fpsRaw = req.body && req.body.fps !== undefined ? Number(req.body.fps) : 12;
+  const widthRaw = req.body && req.body.width !== undefined ? Number(req.body.width) : 480;
 
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
     return res.status(400).json({ error: 'Invalid start/end range.' });
   }
-  const duration = Math.min(end - start, config.gifMaxDurationSeconds);
+  if (!Number.isFinite(fpsRaw) || !Number.isFinite(widthRaw)) {
+    return res.status(400).json({ error: 'Invalid fps/width.' });
+  }
   if (job.durationSeconds && start >= job.durationSeconds) {
     return res.status(400).json({ error: 'Start time is past the end of the video.' });
   }
+
+  const fps = Math.min(30, Math.max(4, fpsRaw));
+  const width = Math.min(720, Math.max(120, widthRaw));
+  // Clamp by both the configured max clip length and (when known) however much video
+  // actually remains after `start` -- otherwise a too-large `end` would make ffmpeg stop
+  // early when the source runs out, while the saved record still claimed the longer,
+  // requested range.
+  const remaining = job.durationSeconds ? job.durationSeconds - start : Infinity;
+  const duration = Math.min(end - start, config.gifMaxDurationSeconds, remaining);
 
   const videoPath = path.join(config.downloadDir, `${job.id}.mp4`);
   const gifId = uuid();
@@ -333,6 +359,7 @@ app.post('/api/jobs/:id/gif', requireDashboardAuth, async (req, res) => {
   try {
     await generateGif(videoPath, gifPath, { start, duration, fps, width });
     const { size } = await fs.promises.stat(gifPath);
+    if (size === 0) throw new Error('ffmpeg produced an empty file');
 
     const gifRecord = { id: gifId, start, end: start + duration, fps, width, sizeBytes: size, createdAt: Date.now() };
     const gifs = [...(job.gifs || []), gifRecord];
@@ -346,7 +373,7 @@ app.post('/api/jobs/:id/gif', requireDashboardAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/jobs/:id/gif/:gifId', requireDashboardAuth, async (req, res) => {
+app.delete('/api/jobs/:id/gif/:gifId', requireDashboardAuth, requireSameOriginFetch, async (req, res) => {
   const job = jobsStore.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
 

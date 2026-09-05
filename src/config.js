@@ -1,14 +1,29 @@
 require('dotenv').config();
 const path = require('path');
 
+// Parses a numeric env var, falling back to `fallback` for anything that isn't a finite
+// number above `min` (unset, empty, non-numeric, zero/negative where that would break
+// invariants elsewhere -- e.g. MAX_CONCURRENT_JOBS=0 would silently deadlock the queue).
+// Warns instead of failing outright, since a bad value is almost always a typo, not intent.
+function numEnv(name, fallback, { min = 0 } = {}) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < min) {
+    console.warn(`Ignoring invalid ${name}=${JSON.stringify(raw)} (expected a number >= ${min}); using ${fallback}.`);
+    return fallback;
+  }
+  return value;
+}
+
 const config = {
   // --- Core app (dashboard) ---
   // Overall size ceiling we'll compress/download a video down to.
-  maxMediaBytes: Number(process.env.MAX_MEDIA_MB || 100) * 1024 * 1024,
-  targetHeight: Number(process.env.TARGET_HEIGHT || 720),
+  maxMediaBytes: numEnv('MAX_MEDIA_MB', 100, { min: 1 }) * 1024 * 1024,
+  targetHeight: numEnv('TARGET_HEIGHT', 720, { min: 144 }),
   downloadDir: path.resolve(process.cwd(), process.env.DOWNLOAD_DIR || 'downloads'),
-  fileTtlMs: Number(process.env.FILE_TTL_MINUTES || 60) * 60 * 1000,
-  port: Number(process.env.PORT || 3000),
+  fileTtlMs: numEnv('FILE_TTL_MINUTES', 60, { min: 1 }) * 60 * 1000,
+  port: numEnv('PORT', 3000, { min: 1 }),
   // Netscape-format cookies.txt content, base64-encoded, exported from a logged-in browser.
   // This lets yt-dlp fetch content that requires being logged in (most LinkedIn videos,
   // some Instagram/Facebook/X posts, age-gated YouTube videos). See README for how to export.
@@ -16,8 +31,10 @@ const config = {
   // Path to an existing cookies.txt on disk (alternative to COOKIES_BASE64).
   cookiesFile: process.env.COOKIES_FILE || null,
   impersonateBrowser: process.env.IMPERSONATE_BROWSER !== 'false',
-  downloadRetries: Number(process.env.DOWNLOAD_RETRIES || 2),
-  maxConcurrentJobs: Number(process.env.MAX_CONCURRENT_JOBS || 1),
+  downloadRetries: numEnv('DOWNLOAD_RETRIES', 2, { min: 0 }),
+  // Must be at least 1 -- 0 would make the queue's `running >= max` check permanently
+  // true, so nothing would ever be dequeued and every job would sit "queued" forever.
+  maxConcurrentJobs: numEnv('MAX_CONCURRENT_JOBS', 1, { min: 1 }),
 
   // Public HTTPS base URL of this deployment (no trailing slash). Only needed for Part 2
   // (WhatsApp): Twilio has to fetch media from an absolute, publicly reachable URL. Without
@@ -32,11 +49,11 @@ const config = {
   dashboardEnabled: Boolean(process.env.DASHBOARD_USER && process.env.DASHBOARD_PASSWORD),
   // How long job history (metadata + thumbnail) is kept after the video file itself has
   // expired and been deleted -- independent of, and longer than, FILE_TTL_MINUTES.
-  dashboardHistoryMs: Number(process.env.DASHBOARD_HISTORY_DAYS || 7) * 24 * 60 * 60 * 1000,
+  dashboardHistoryMs: numEnv('DASHBOARD_HISTORY_DAYS', 7, { min: 1 }) * 24 * 60 * 60 * 1000,
   dataDir: path.resolve(process.cwd(), process.env.DATA_DIR || 'data'),
 
   // GIF export: max clip length allowed in one GIF (longer clips + high fps get huge fast).
-  gifMaxDurationSeconds: Number(process.env.GIF_MAX_DURATION_SECONDS || 15),
+  gifMaxDurationSeconds: numEnv('GIF_MAX_DURATION_SECONDS', 15, { min: 1 }),
 
   // --- Part 2: WhatsApp (optional) ---
   // All unset by default. Set every TWILIO_* var below to turn the /whatsapp/webhook route
@@ -53,9 +70,17 @@ const config = {
     .filter(Boolean),
   // WhatsApp's own hard cap for a playable inline video message -- not really adjustable,
   // this is enforced by WhatsApp/Twilio, not by this app.
-  inlineVideoBytes: Number(process.env.WHATSAPP_INLINE_VIDEO_MB || 16) * 1024 * 1024,
+  inlineVideoBytes: numEnv('WHATSAPP_INLINE_VIDEO_MB', 16, { min: 1 }) * 1024 * 1024,
   validateTwilioSignature: process.env.VALIDATE_TWILIO_SIGNATURE !== 'false',
-  dedupeTtlMs: Number(process.env.DEDUPE_TTL_MINUTES || 30) * 60 * 1000,
+  dedupeTtlMs: numEnv('DEDUPE_TTL_MINUTES', 30, { min: 1 }) * 60 * 1000,
 };
+
+if (config.whatsappEnabled && !config.publicBaseUrl) {
+  console.warn(
+    'WhatsApp (Part 2) is configured but PUBLIC_BASE_URL is not set -- Twilio will not be ' +
+      'able to fetch media from a relative URL, so video delivery will fail. Set PUBLIC_BASE_URL ' +
+      'to this deployment\'s public HTTPS domain.'
+  );
+}
 
 module.exports = config;

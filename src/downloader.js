@@ -91,7 +91,6 @@ function buildYtDlpArgs(url, outputTemplate) {
   const args = [
     '--no-playlist',
     '--no-warnings',
-    '--restrict-filenames',
     '-f',
     buildFormatSelector(),
     // --merge-output-format only takes effect when yt-dlp actually merges two
@@ -173,9 +172,13 @@ async function getDuration(filePath) {
  * already downloaded at that resolution. Full duration is always preserved; only
  * resolution/bitrate step down (720p -> 480p -> 360p) if a single bitrate pass at
  * 720p still doesn't land under the target (very long or high-motion video).
+ *
+ * `knownDurationSeconds` lets the caller pass in a duration it already probed (e.g. via
+ * getVideoMeta right after download) instead of this function re-running ffprobe on the
+ * same file from scratch.
  */
-async function compressToFit(inputPath, maxBytes, jobId) {
-  const duration = await getDuration(inputPath);
+async function compressToFit(inputPath, maxBytes, jobId, knownDurationSeconds) {
+  const duration = knownDurationSeconds || (await getDuration(inputPath));
   if (!duration) {
     throw new Error('Could not determine video duration for compression');
   }

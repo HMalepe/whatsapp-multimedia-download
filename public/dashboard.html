@@ -179,8 +179,9 @@
     background: var(--bg-card); border: 1px solid var(--border);
     color: var(--text-dim); padding: 7px 13px; border-radius: 999px;
     font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none;
-    transition: all .15s; white-space: nowrap;
+    transition: all .15s; white-space: nowrap; font-family: inherit;
   }
+  .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .pill:hover { color: var(--text); border-color: #3a3f52; }
   .pill.active { background: var(--accent-soft); color: #b6adff; border-color: #7c6cff66; }
   select.sort {
@@ -384,6 +385,11 @@
 
   @media (max-width: 520px) {
     .toolbar { flex-direction: column; align-items: stretch; }
+    /* .search's `flex: 1 1 220px` sets a 220px flex-basis meant as a minimum *width*
+       when the toolbar is a row; in column mode above, that same basis applies to the
+       main axis, which is now vertical -- without this override it stretches the search
+       box to 220px tall instead of the ~37px its actual content needs. */
+    .search { flex: none; }
   }
 </style>
 </head>
@@ -564,9 +570,9 @@
       const platforms = [...new Map(state.jobs.map((j) => [j.platform.key, j.platform])).values()];
       const pills = [{ key: 'all', label: 'All', color: '#7c6cff' }, ...platforms];
       document.getElementById('platformPills').innerHTML = pills.map((p) => `
-        <div class="pill ${state.platform === p.key ? 'active' : ''}" data-key="${p.key}">
+        <button type="button" class="pill ${state.platform === p.key ? 'active' : ''}" data-key="${p.key}" aria-pressed="${state.platform === p.key}">
           ${p.label}${p.key !== 'all' ? ` · ${counts[p.key] || 0}` : ''}
-        </div>
+        </button>
       `).join('');
       document.querySelectorAll('.pill').forEach((el) => {
         el.onclick = () => { state.platform = el.dataset.key; render(); };
@@ -796,7 +802,7 @@
       try {
         const res = await fetch(`/api/jobs/${gifEditor.jobId}/gif`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Vault-Fetch': '1' },
           body: JSON.stringify({
             start: gifEditor.start,
             end: gifEditor.end,
@@ -822,7 +828,7 @@
 
     async function deleteGif(jobId, gifId) {
       if (!confirm('Delete this GIF?')) return;
-      await fetch(`/api/jobs/${jobId}/gif/${gifId}`, { method: 'DELETE' });
+      await fetch(`/api/jobs/${jobId}/gif/${gifId}`, { method: 'DELETE', headers: { 'X-Vault-Fetch': '1' } });
       await fetchJobs();
       const job = state.jobs.find((j) => j.id === jobId);
       const wrap = document.getElementById('gifExistingWrap');
@@ -831,14 +837,25 @@
 
     async function deleteJob(id) {
       if (!confirm('Delete this video and its history entry?')) return;
-      await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      await fetch(`/api/jobs/${id}`, { method: 'DELETE', headers: { 'X-Vault-Fetch': '1' } });
       fetchJobs();
     }
 
     async function retryJob(id) {
-      await fetch(`/api/jobs/${id}/retry`, { method: 'POST' });
+      await fetch(`/api/jobs/${id}/retry`, { method: 'POST', headers: { 'X-Vault-Fetch': '1' } });
       fetchJobs();
     }
+
+    // Only one modal (preview or GIF editor) is ever open at a time, so Escape can just
+    // remove whichever backdrop is currently in the DOM.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const backdrop = document.querySelector('.modal-backdrop');
+      if (backdrop) {
+        backdrop.remove();
+        previewOpen = false;
+      }
+    });
 
     document.getElementById('search').addEventListener('input', (e) => { state.search = e.target.value; render(); });
     document.getElementById('sort').addEventListener('change', (e) => { state.sort = e.target.value; render(); });
@@ -857,7 +874,7 @@
       try {
         const res = await fetch('/api/jobs', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Vault-Fetch': '1' },
           body: JSON.stringify({ url }),
         });
         const data = await res.json().catch(() => ({}));

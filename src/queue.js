@@ -12,8 +12,12 @@ function pump() {
   if (!job) return;
 
   running++;
-  job
-    .task()
+  // Wrapped in Promise.resolve().then(...) rather than calling job.task() directly, so a
+  // task that throws synchronously (instead of returning a rejected promise) still gets
+  // caught here -- otherwise it would break out of pump() without ever decrementing
+  // `running`, permanently wedging the queue.
+  Promise.resolve()
+    .then(job.task)
     .then(job.resolve, job.reject)
     .finally(() => {
       running--;
