@@ -280,4 +280,51 @@ async function generateThumbnail(filePath, outPath, durationSeconds) {
   );
 }
 
-module.exports = { downloadVideo, compressToFit, getDuration, getVideoMeta, generateThumbnail };
+// Trims [start, start+duration) out of the source video and encodes it as a high-quality
+// GIF, using ffmpeg's two-pass palette workflow (generate an optimal palette for this exact
+// clip, then dither against it) -- this looks substantially better than a naive one-pass GIF
+// encode, especially on gradients and skin tones, for a modest extra ffmpeg run.
+async function generateGif(filePath, outPath, { start, duration, fps, width }) {
+  const palettePath = `${outPath}.palette.png`;
+  const filters = `fps=${fps},scale=${width}:-1:flags=lanczos`;
+
+  try {
+    await run(
+      'ffmpeg',
+      [
+        '-y',
+        '-ss', String(start),
+        '-t', String(duration),
+        '-i', filePath,
+        '-vf', `${filters},palettegen=stats_mode=diff`,
+        palettePath,
+      ],
+      { timeoutMs: 2 * 60 * 1000 }
+    );
+
+    await run(
+      'ffmpeg',
+      [
+        '-y',
+        '-ss', String(start),
+        '-t', String(duration),
+        '-i', filePath,
+        '-i', palettePath,
+        '-filter_complex', `${filters}[x];[x][1:v]paletteuse=dither=bayer`,
+        outPath,
+      ],
+      { timeoutMs: 2 * 60 * 1000 }
+    );
+  } finally {
+    await fs.unlink(palettePath).catch(() => {});
+  }
+}
+
+module.exports = {
+  downloadVideo,
+  compressToFit,
+  getDuration,
+  getVideoMeta,
+  generateThumbnail,
+  generateGif,
+};

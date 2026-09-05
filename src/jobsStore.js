@@ -21,14 +21,26 @@ function load() {
 }
 load();
 
+function writeNow() {
+  fs.mkdirSync(config.dataDir, { recursive: true });
+  fs.writeFileSync(DATA_FILE, JSON.stringify([...jobs.values()]));
+}
+
 function persist() {
   clearTimeout(writeTimer);
-  writeTimer = setTimeout(() => {
-    fs.mkdirSync(config.dataDir, { recursive: true });
-    const arr = [...jobs.values()];
-    fs.writeFile(DATA_FILE, JSON.stringify(arr), () => {});
-  }, 250);
+  writeTimer = setTimeout(writeNow, 250);
   writeTimer.unref();
+}
+
+// Bypasses the debounce and writes immediately. A process killed (e.g. Railway sending
+// SIGTERM on a redeploy) within that 250ms window would otherwise lose whatever job/GIF
+// update just happened, even though the file itself still exists on disk -- call this from
+// a shutdown handler so the most recent state always makes it out.
+function flush() {
+  if (!writeTimer) return;
+  clearTimeout(writeTimer);
+  writeTimer = null;
+  writeNow();
 }
 
 function createJob(job) {
@@ -74,4 +86,4 @@ function purgeOlderThan(maxAgeMs) {
   return removed;
 }
 
-module.exports = { createJob, updateJob, getJob, listJobs, deleteJob, purgeOlderThan };
+module.exports = { createJob, updateJob, getJob, listJobs, deleteJob, purgeOlderThan, flush };

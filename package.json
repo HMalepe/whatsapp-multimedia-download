@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-multimedia-download",
   "version": "1.0.0",
-  "description": "Send a video link to a WhatsApp number and get the video back, downloaded at the highest quality available (YouTube, TikTok, Twitter/X, Instagram, Facebook, Reddit, LinkedIn).",
+  "description": "Paste a video link into a private dashboard and get the video back at 720p, with built-in GIF trimming (YouTube, TikTok, Twitter/X, Instagram, Facebook, Reddit, LinkedIn). Optional WhatsApp integration via Twilio.",
   "main": "src/server.js",
   "private": true,
   "type": "commonjs",

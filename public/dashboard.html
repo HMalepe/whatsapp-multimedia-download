@@ -90,6 +90,7 @@
     transition: border-color .15s, transform .15s;
   }
   .wa-link:hover { border-color: var(--green); transform: translateY(-1px); }
+  .wa-link[hidden] { display: none; }
 
   /* ---------- Stat chips ---------- */
   .stats {
@@ -324,6 +325,63 @@
     color: var(--text-dim); padding: 8px 20px; border-radius: 999px; cursor: pointer; font-size: 12.5px;
   }
 
+  .badge.gif-count {
+    left: 8px; bottom: 8px; background: #000000b3; color: #fff;
+    display: flex; align-items: center; gap: 3px;
+  }
+
+  /* ---------- GIF editor modal ---------- */
+  .gif-modal { max-width: 640px; }
+  .gif-modal video { width: 100%; border-radius: 12px 12px 0 0; max-height: 50vh; background: #000; display: block; }
+  .gif-panel {
+    background: var(--bg-card); border: 1px solid var(--border-soft); border-top: none;
+    border-radius: 0 0 12px 12px; padding: 16px 18px;
+  }
+  .gif-range-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .gif-range-row button {
+    background: var(--bg-elev); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  }
+  .gif-range-row button:hover { border-color: var(--accent); }
+  .gif-duration-pill {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim);
+    background: var(--bg-elev); padding: 6px 11px; border-radius: 999px; margin-left: auto;
+  }
+  .gif-duration-pill.over { color: var(--red); }
+  .gif-options-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .gif-options-row label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .gif-options-row select {
+    background: var(--bg-elev); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 6px 9px; font-size: 12.5px; cursor: pointer;
+  }
+  .gif-create-btn {
+    margin-left: auto; background: linear-gradient(135deg, var(--accent), #6a5cf0); color: #fff;
+    border: none; border-radius: 9px; padding: 10px 18px; font-size: 13px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .gif-create-btn:disabled { opacity: .55; cursor: default; }
+  .gif-create-btn .btn-spinner { border-color: #ffffff44; border-top-color: #fff; }
+  .gif-create-btn.loading .btn-spinner { display: inline-block; }
+  .gif-create-btn.loading .btn-label { display: none; }
+  .gif-error {
+    font-size: 12px; color: #ff9aa4; background: var(--red-soft); border-radius: 8px;
+    padding: 8px 11px; display: none; margin-bottom: 10px;
+  }
+  .gif-error.show { display: block; }
+  .gif-existing { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-top: 4px; }
+  .gif-existing-item { position: relative; border-radius: 9px; overflow: hidden; background: #000; aspect-ratio: 1; }
+  .gif-existing-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gif-existing-item .gif-item-actions {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: #000000aa; opacity: 0; transition: opacity .15s;
+  }
+  .gif-existing-item:hover .gif-item-actions { opacity: 1; }
+  .gif-existing-item .gif-item-actions a, .gif-existing-item .gif-item-actions button {
+    width: 28px; height: 28px; border-radius: 50%; background: #ffffffee; border: none;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; text-decoration: none; color: #000;
+  }
+  .gif-section-label { font-size: 11.5px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 8px; }
+
   @media (max-width: 520px) {
     .toolbar { flex-direction: column; align-items: stretch; }
   }
@@ -340,7 +398,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <a class="wa-link" id="waLink" href="#" target="_blank" rel="noopener">💬 Message the bot</a>
+        <a class="wa-link" id="waLink" href="#" target="_blank" rel="noopener" hidden>💬 Message the bot</a>
       </div>
     </header>
 
@@ -355,7 +413,7 @@
           <span class="btn-label">⬇ Fetch video</span>
         </button>
       </form>
-      <div class="paste-hint">No need to text the bot — paste a link here and it shows up below the moment it starts downloading.</div>
+      <div class="paste-hint" id="pasteHint">Paste a link and it shows up below the moment it starts downloading.</div>
       <div class="paste-error" id="pasteError"></div>
     </div>
 
@@ -378,7 +436,11 @@
   <div class="toasts" id="toasts"></div>
 
   <script>
-    const state = { jobs: [], knownIds: new Set(), justArrived: new Set(), search: '', platform: 'all', sort: 'newest', firstLoad: true };
+    const state = {
+      jobs: [], knownIds: new Set(), justArrived: new Set(),
+      search: '', platform: 'all', sort: 'newest', firstLoad: true,
+      gifMaxDurationSeconds: 15,
+    };
     let previewOpen = false;
 
     function fmtBytes(n) {
@@ -424,14 +486,19 @@
 
     async function fetchJobs() {
       try {
-        const res = await fetch('/dashboard/api/jobs', { cache: 'no-store' });
+        const res = await fetch('/api/jobs', { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         handleNewArrivals(data.jobs);
         state.jobs = data.jobs;
-        if (data.whatsappNumber) {
+        if (data.gifMaxDurationSeconds) state.gifMaxDurationSeconds = data.gifMaxDurationSeconds;
+        const waLink = document.getElementById('waLink');
+        if (data.whatsappEnabled && data.whatsappNumber) {
           const num = data.whatsappNumber.replace('whatsapp:', '');
-          document.getElementById('waLink').href = `https://wa.me/${num.replace('+', '')}`;
+          waLink.href = `https://wa.me/${num.replace('+', '')}`;
+          waLink.hidden = false;
+        } else {
+          waLink.hidden = true;
         }
         render();
       } catch (e) {
@@ -526,6 +593,9 @@
           thumbInner = `${img}<div class="play-overlay"><div class="btn-play">▶</div></div>${durationBadge}`;
         }
         thumbInner += platformBadge;
+        if (job.gifs && job.gifs.length) {
+          thumbInner += `<div class="badge gif-count">🎞 ${job.gifs.length}</div>`;
+        }
       }
 
       const thumbClass = job.status === 'ready' && job.videoExpired ? 'thumb expired' : 'thumb';
@@ -539,6 +609,7 @@
       if (job.status === 'ready' && !job.videoExpired) {
         actions = `
           <a class="primary" href="${job.mediaUrl}">⬇ Download</a>
+          <button onclick="openGifEditor('${job.id}')">🎞 GIF</button>
           <button class="danger" onclick="deleteJob('${job.id}')">🗑</button>
         `;
       } else if (job.status === 'failed' || (job.status === 'ready' && job.videoExpired)) {
@@ -592,7 +663,7 @@
             <h2>${state.jobs.length ? 'No matches' : 'No videos yet'}</h2>
             <p>${state.jobs.length
               ? 'Try a different search or platform filter.'
-              : 'Send a video link to your WhatsApp bot and it’ll show up here the moment it starts downloading.'}</p>
+              : 'Paste a video link above and it’ll show up here the moment it starts downloading.'}</p>
           </div>`;
         return;
       }
@@ -614,14 +685,158 @@
       function close() { backdrop.remove(); previewOpen = false; }
     }
 
+    // --- GIF editor -----------------------------------------------------------------
+
+    const gifEditor = { jobId: null, start: 0, end: 3 };
+
+    function gifExistingHtml(job) {
+      const gifs = job.gifs || [];
+      if (!gifs.length) return '';
+      return `
+        <div class="gif-section-label">Made from this video (${gifs.length})</div>
+        <div class="gif-existing">
+          ${gifs.map((g) => `
+            <div class="gif-existing-item">
+              <img src="${g.url}" loading="lazy" />
+              <div class="gif-item-actions">
+                <a href="${g.url}" download title="Download">⬇</a>
+                <button onclick="deleteGif('${job.id}','${g.id}')" title="Delete">🗑</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function updateGifRangeUi() {
+      document.getElementById('gifStartLabel').textContent = fmtDuration(gifEditor.start) || '0:00';
+      document.getElementById('gifEndLabel').textContent = fmtDuration(gifEditor.end) || '0:00';
+      const duration = gifEditor.end - gifEditor.start;
+      const pill = document.getElementById('gifDurationPill');
+      const over = duration > state.gifMaxDurationSeconds;
+      pill.textContent = `${duration.toFixed(1)}s${over ? ` (max ${state.gifMaxDurationSeconds}s)` : ''}`;
+      pill.classList.toggle('over', over || duration <= 0);
+      document.getElementById('gifCreateBtn').disabled = duration <= 0;
+    }
+
+    function openGifEditor(jobId) {
+      const job = state.jobs.find((j) => j.id === jobId);
+      if (!job) return;
+
+      gifEditor.jobId = jobId;
+      gifEditor.start = 0;
+      gifEditor.end = Math.min(3, job.durationSeconds || 3);
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="modal gif-modal">
+          <video id="gifSourceVideo" src="${job.mediaUrl}" controls></video>
+          <div class="gif-panel">
+            <div class="gif-error" id="gifError"></div>
+            <div class="gif-range-row">
+              <button type="button" onclick="setGifStart()">⏺ Set start (<span id="gifStartLabel">0:00</span>)</button>
+              <button type="button" onclick="setGifEnd()">⏺ Set end (<span id="gifEndLabel">0:03</span>)</button>
+              <span class="gif-duration-pill" id="gifDurationPill"></span>
+            </div>
+            <div class="gif-options-row">
+              <label>FPS
+                <select id="gifFps">
+                  <option value="8">8</option>
+                  <option value="12" selected>12</option>
+                  <option value="15">15</option>
+                  <option value="24">24</option>
+                </select>
+              </label>
+              <label>Width
+                <select id="gifWidth">
+                  <option value="320">320px</option>
+                  <option value="480" selected>480px</option>
+                  <option value="640">640px</option>
+                </select>
+              </label>
+              <button class="gif-create-btn" id="gifCreateBtn" type="button" onclick="createGif()">
+                <span class="btn-spinner"></span>
+                <span class="btn-label">🎞 Create GIF</span>
+              </button>
+            </div>
+            <div id="gifExistingWrap">${gifExistingHtml(job)}</div>
+          </div>
+          <button class="modal-close">Close</button>
+        </div>`;
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+      backdrop.querySelector('.modal-close').onclick = close;
+      document.body.appendChild(backdrop);
+      function close() { backdrop.remove(); previewOpen = false; }
+      previewOpen = true;
+
+      updateGifRangeUi();
+    }
+
+    function setGifStart() {
+      const video = document.getElementById('gifSourceVideo');
+      gifEditor.start = video.currentTime;
+      if (gifEditor.end <= gifEditor.start) gifEditor.end = gifEditor.start + 1;
+      updateGifRangeUi();
+    }
+
+    function setGifEnd() {
+      const video = document.getElementById('gifSourceVideo');
+      gifEditor.end = video.currentTime;
+      updateGifRangeUi();
+    }
+
+    async function createGif() {
+      const errorEl = document.getElementById('gifError');
+      const btn = document.getElementById('gifCreateBtn');
+      errorEl.classList.remove('show');
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/jobs/${gifEditor.jobId}/gif`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start: gifEditor.start,
+            end: gifEditor.end,
+            fps: Number(document.getElementById('gifFps').value),
+            width: Number(document.getElementById('gifWidth').value),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not create the GIF.');
+
+        toast('🎞 GIF ready', 'Added to this video’s library');
+        await fetchJobs();
+        const job = state.jobs.find((j) => j.id === gifEditor.jobId);
+        document.getElementById('gifExistingWrap').innerHTML = job ? gifExistingHtml(job) : '';
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.add('show');
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteGif(jobId, gifId) {
+      if (!confirm('Delete this GIF?')) return;
+      await fetch(`/api/jobs/${jobId}/gif/${gifId}`, { method: 'DELETE' });
+      await fetchJobs();
+      const job = state.jobs.find((j) => j.id === jobId);
+      const wrap = document.getElementById('gifExistingWrap');
+      if (wrap) wrap.innerHTML = job ? gifExistingHtml(job) : '';
+    }
+
     async function deleteJob(id) {
       if (!confirm('Delete this video and its history entry?')) return;
-      await fetch(`/dashboard/api/jobs/${id}`, { method: 'DELETE' });
+      await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
       fetchJobs();
     }
 
     async function retryJob(id) {
-      await fetch(`/dashboard/api/jobs/${id}/retry`, { method: 'POST' });
+      await fetch(`/api/jobs/${id}/retry`, { method: 'POST' });
       fetchJobs();
     }
 
@@ -640,7 +855,7 @@
       btn.disabled = true;
 
       try {
-        const res = await fetch('/dashboard/api/jobs', {
+        const res = await fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
