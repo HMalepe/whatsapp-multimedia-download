@@ -5,7 +5,15 @@ const { v4: uuid } = require('uuid');
 
 const config = require('./config');
 const { extractUrl, detectPlatform } = require('./helpers');
-const { requireDashboardAuth } = require('./dashboardAuth');
+const {
+  requireDashboardAuth,
+  checkCredentials,
+  setSessionCookie,
+  clearSessionCookie,
+  isLockedOut,
+  recordFailedAttempt,
+  clearAttempts,
+} = require('./dashboardAuth');
 const {
   downloadVideo,
   compressToFit,
@@ -19,6 +27,11 @@ const { enqueue } = require('./queue');
 const jobsStore = require('./jobsStore');
 
 const app = express();
+// Railway (and most PaaS hosts) sit in front of this app as a reverse proxy -- without
+// this, req.ip would always be the proxy's internal address, making the login
+// rate-limiter useless (every client looks identical) or worse, a single set of failed
+// attempts could lock out every real visitor at once.
+app.set('trust proxy', true);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
@@ -257,6 +270,47 @@ function requireSameOriginFetch(req, res, next) {
   }
   next();
 }
+
+// --- Login / logout ------------------------------------------------------------------
+
+app.get('/login', (req, res) => {
+  if (!config.dashboardEnabled) {
+    return res
+      .status(404)
+      .send('Dashboard is disabled. Set DASHBOARD_USER and DASHBOARD_PASSWORD to enable it.');
+  }
+  res.sendFile(path.join(__dirname, '..', 'public', 'login.html'));
+});
+
+app.post('/login', (req, res) => {
+  if (!config.dashboardEnabled) {
+    return res
+      .status(404)
+      .send('Dashboard is disabled. Set DASHBOARD_USER and DASHBOARD_PASSWORD to enable it.');
+  }
+
+  // req.ip respects Express's trust-proxy setting; Railway sits in front of this app as a
+  // reverse proxy, so this is the client's real IP once trust proxy is enabled below.
+  const ip = req.ip;
+  if (isLockedOut(ip)) {
+    return res.redirect('/login?error=locked');
+  }
+
+  const { username, password } = req.body || {};
+  if (checkCredentials(username, password)) {
+    clearAttempts(ip);
+    setSessionCookie(res);
+    return res.redirect('/');
+  }
+
+  recordFailedAttempt(ip);
+  res.redirect('/login?error=1');
+});
+
+app.get('/logout', (req, res) => {
+  clearSessionCookie(res);
+  res.redirect('/login');
+});
 
 // --- Dashboard (the app) -------------------------------------------------------------
 

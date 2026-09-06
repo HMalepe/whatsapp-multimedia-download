@@ -405,6 +405,7 @@
       </div>
       <div class="header-actions">
         <a class="wa-link" id="waLink" href="#" target="_blank" rel="noopener" hidden>💬 Message the bot</a>
+        <a class="wa-link" href="/logout">🔓 Log out</a>
       </div>
     </header>
 
@@ -493,6 +494,7 @@
     async function fetchJobs() {
       try {
         const res = await fetch('/api/jobs', { cache: 'no-store' });
+        if (res.status === 401) { location.href = '/login'; return; }
         if (!res.ok) return;
         const data = await res.json();
         handleNewArrivals(data.jobs);

@@ -85,8 +85,9 @@ Visit `http://localhost:3000` and log in with the credentials you set.
 
 ## Using the dashboard
 
-Log in (HTTP Basic Auth — your browser will prompt once and remember it for the session),
-then:
+Log in at `/login` with `DASHBOARD_USER`/`DASHBOARD_PASSWORD` — a normal web form (works
+properly with mobile autofill/password managers, unlike a browser's native Basic Auth
+popup), backed by a session cookie that stays signed in for 30 days. Then:
 
 - **Paste a link** into the bar at the top. It appears as a new card immediately, with a
   live "downloading…" state.
@@ -149,8 +150,9 @@ release (the Dockerfile already installs with `-U`, so a fresh build pulls the l
   anything beyond that queues in-memory and processes in order. This is built for personal,
   occasional use, not for parallelizing many simultaneous downloads.
 - **Security**: the whole app (dashboard, media/thumbnail/GIF serving, the API) is gated
-  behind HTTP Basic Auth once `DASHBOARD_USER`/`DASHBOARD_PASSWORD` are set. It's disabled
-  entirely (every route 401/404s with a message telling you to set them) until you do.
+  behind a login (`/login`) once `DASHBOARD_USER`/`DASHBOARD_PASSWORD` are set. It's disabled
+  entirely (every route 401/404s with a message telling you to set them) until you do. A
+  login locks out further attempts from the same IP for 15 minutes after 10 wrong passwords.
 
 ## Part 2 (optional): WhatsApp via Twilio
 
@@ -206,7 +208,7 @@ requests.
 src/
   server.js        Express app: dashboard, API, media/thumb/gif serving, (optional) webhook
   config.js        Environment variable loading
-  dashboardAuth.js HTTP Basic Auth guarding the whole app
+  dashboardAuth.js Session-cookie login guarding the whole app
   security.js      Part 2: allowlist check + Twilio signature validation
   whatsapp.js      Part 2: Twilio client (send text / send media)
   downloader.js    yt-dlp download + ffmpeg compression + thumbnail/metadata + GIF export
@@ -217,5 +219,6 @@ src/
   dedupe.js        Part 2: Twilio MessageSid dedupe (ignores webhook retries)
 public/
   dashboard.html   The dashboard (self-contained, no build step)
+  login.html       The sign-in page
 Dockerfile         Node + Python/yt-dlp + ffmpeg runtime for Railway
 ```

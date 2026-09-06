@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign in · Video Vault</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📼</text></svg>" />
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --bg-card: #171a23;
+    --border: #262a37;
+    --text: #eef0f6;
+    --text-dim: #9198ac;
+    --text-faint: #5b6272;
+    --accent: #7c6cff;
+    --red: #ff5d6c;
+    --red-soft: #ff5d6c1e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin: 0;
+    height: 100%;
+  }
+  body {
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #241a4a44, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #0f2d2444, transparent 55%),
+      var(--bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 20px 40px -20px rgba(0,0,0,0.6);
+  }
+  .mark {
+    width: 48px; height: 48px; border-radius: 13px;
+    background: linear-gradient(135deg, var(--accent), #4f9dff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin: 0 auto 16px;
+    box-shadow: 0 8px 24px -8px #7c6cff88;
+  }
+  h1 { text-align: center; font-size: 19px; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { text-align: center; font-size: 13px; color: var(--text-dim); margin: 0 0 26px; }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+  input {
+    width: 100%; background: #0c0e15; border: 1px solid #2a2f3f;
+    color: var(--text); border-radius: 10px; padding: 12px 14px;
+    font-size: 15px; outline: none; transition: border-color .15s, box-shadow .15s;
+    margin-bottom: 16px;
+  }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #7c6cff2a; }
+  button {
+    width: 100%; background: linear-gradient(135deg, var(--accent), #6a5cf0);
+    color: #fff; border: none; border-radius: 10px; padding: 13px;
+    font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px;
+  }
+  button:active { transform: translateY(1px); }
+  .error {
+    background: var(--red-soft); color: #ff9aa4; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; margin-bottom: 18px; line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">📼</div>
+    <h1>Video Vault</h1>
+    <p class="sub">Sign in to continue</p>
+    <div id="errorBox"></div>
+    <form method="POST" action="/login" id="loginForm" autocomplete="on">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+  <script>
+    // Reflects a ?error=1 query param (set by the server on a failed attempt) as an
+    // inline message, without needing server-side templating for this one static page.
+    const params = new URLSearchParams(location.search);
+    if (params.get('error') === '1') {
+      document.getElementById('errorBox').innerHTML =
+        '<div class="error">Incorrect username or password.</div>';
+    } else if (params.get('error') === 'locked') {
+      document.getElementById('errorBox').innerHTML =
+        '<div class="error">Too many attempts. Try again in a few minutes.</div>';
+    }
+  </script>
+</body>
+</html>
