@@ -127,6 +127,41 @@ function buildYtDlpArgs(url, outputTemplate) {
  * depends on yt-dlp's extractors. Retries transient failures (network hiccups,
  * rate limiting) with a short backoff; login/removed/unsupported errors fail fast.
  */
+// --remux-video mp4 only works when the codecs yt-dlp picked are actually mp4-compatible;
+// for a growing share of YouTube videos the only 720p-or-under video track is AV1 or VP9
+// (paired with Opus audio), none of which remux cleanly into mp4, so yt-dlp silently leaves
+// the result in its natural container (typically .mkv) instead. Rather than keep gambling
+// on yt-dlp's own remux succeeding, find whatever file it actually produced and, if it
+// isn't already mp4, convert it ourselves -- a fast codec-copy remux when the codecs allow
+// it, falling back to a full re-encode otherwise. This guarantees the rest of the app (which
+// assumes `${jobId}.mp4`, and needs mp4/h264+aac specifically for the browser <video> tag to
+// play it inline) always gets a real, playable mp4 regardless of the source's codecs.
+async function locateDownloadedFile(jobId) {
+  const entries = await fs.readdir(config.downloadDir);
+  const match = entries.find((f) => f.startsWith(`${jobId}.`) && f !== `${jobId}.jpg`);
+  if (!match) throw new Error('yt-dlp reported success but produced no output file');
+  return path.join(config.downloadDir, match);
+}
+
+async function ensureMp4(filePath, jobId) {
+  if (filePath.toLowerCase().endsWith('.mp4')) return filePath;
+
+  const target = path.join(config.downloadDir, `${jobId}.mp4`);
+  try {
+    await run('ffmpeg', ['-y', '-i', filePath, '-c', 'copy', target], { timeoutMs: 5 * 60 * 1000 });
+  } catch {
+    // Codecs aren't mp4-compatible even via remux (e.g. AV1/VP9 video, Opus audio) --
+    // fall back to a real re-encode into universally-playable h264/aac.
+    await run(
+      'ffmpeg',
+      ['-y', '-i', filePath, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', target],
+      { timeoutMs: 15 * 60 * 1000 }
+    );
+  }
+  await fs.unlink(filePath).catch(() => {});
+  return target;
+}
+
 async function downloadVideo(url, jobId) {
   await fs.mkdir(config.downloadDir, { recursive: true });
   const outputTemplate = path.join(config.downloadDir, `${jobId}.%(ext)s`);
@@ -137,9 +172,8 @@ async function downloadVideo(url, jobId) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await run('yt-dlp', args);
-      const finalPath = path.join(config.downloadDir, `${jobId}.mp4`);
-      await fs.access(finalPath);
-      return finalPath;
+      const producedPath = await locateDownloadedFile(jobId);
+      return await ensureMp4(producedPath, jobId);
     } catch (err) {
       lastErr = err;
       if (attempt < maxAttempts && isRetryable(err)) {
