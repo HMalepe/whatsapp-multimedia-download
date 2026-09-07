@@ -134,9 +134,14 @@ errors that a retry can't fix (private/removed content, login-required, unsuppor
 Even with both of these, expect occasional failures: a platform can still rate-limit or
 block a given request, and any post that's been deleted, made private, or is genuinely
 login-only (e.g. someone else's private LinkedIn post) will never be fetchable. Also keep
-`yt-dlp` itself current — platforms change their sites often and extraction breaks until
-`yt-dlp` is updated; rebuild the Docker image periodically to pick up the latest `yt-dlp`
-release (the Dockerfile already installs with `-U`, so a fresh build pulls the latest).
+`yt-dlp` itself current — platforms change their sites often (a stale `yt-dlp` shows up as
+things like `HTTP Error 403: Forbidden`, not an error naming `yt-dlp` itself) and extraction
+breaks until it's updated. The Dockerfile installs `yt-dlp` with `-U` *after* copying the
+app's source, specifically so that layer's Docker cache is invalidated (and `yt-dlp`
+actually re-fetched fresh) on every deploy — not just the first one ever, which a naive
+placement earlier in the Dockerfile would otherwise silently pin forever. If downloads that
+used to work suddenly all fail with a 403, an empty push (`git commit --allow-empty -m
+"bump yt-dlp" && git push`) forces a fresh deploy and picks up the latest release.
 
 ## Limitations
 
