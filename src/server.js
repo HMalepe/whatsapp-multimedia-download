@@ -245,6 +245,11 @@ async function processVideoRequest(jobId, to, url) {
   }
 }
 
+// Shows the real yt-dlp/ffmpeg error on the card instead of a generic catch-all -- a vague
+// "may be private, unsupported, or region-locked" for every failure meant every new failure
+// mode needed a trip to the server logs to even find out what actually happened. Strips our
+// own "<cmd> exited with code N:" wrapper and yt-dlp's boilerplate link-dump suffix, keeping
+// just the human-readable reason.
 function errorMessageFor(err) {
   const msg = err.message || '';
   if (msg.includes('Unable to compress')) {
@@ -253,7 +258,16 @@ function errorMessageFor(err) {
   if (msg.includes('timed out')) {
     return 'The download took too long and timed out.';
   }
-  return 'The link may be private, unsupported, or region-locked.';
+
+  let cleaned = msg
+    .replace(/^.*?exited with code \d+:\s*/s, '')
+    .replace(/^ERROR:\s*(\[[^\]]+\]\s*[^:]+:\s*)?/, '')
+    .replace(/\s*(See|Also see)\s+https?:\/\/\S+.*$/gis, '')
+    .trim();
+
+  if (!cleaned) cleaned = 'The link may be private, unsupported, or region-locked.';
+  if (cleaned.length > 300) cleaned = `${cleaned.slice(0, 297)}...`;
+  return cleaned;
 }
 
 // HTTP Basic Auth credentials, once cached by the browser, are attached automatically to
