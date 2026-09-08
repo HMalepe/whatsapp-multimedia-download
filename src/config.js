@@ -28,8 +28,9 @@ const config = {
   // This lets yt-dlp fetch content that requires being logged in (most LinkedIn videos,
   // some Instagram/Facebook/X posts, age-gated YouTube videos). See README for how to export.
   cookiesBase64: process.env.COOKIES_BASE64 || null,
-  // Path to an existing cookies.txt on disk (alternative to COOKIES_BASE64).
-  cookiesFile: process.env.COOKIES_FILE || null,
+  // Path to an existing cookies.txt on disk (e.g. a Railway volume mount), as an
+  // alternative to COOKIES_BASE64. YTDLP_COOKIES_PATH is accepted as an alias.
+  cookiesFile: process.env.COOKIES_FILE || process.env.YTDLP_COOKIES_PATH || null,
   impersonateBrowser: process.env.IMPERSONATE_BROWSER !== 'false',
   downloadRetries: numEnv('DOWNLOAD_RETRIES', 2, { min: 0 }),
   // Must be at least 1 -- 0 would make the queue's `running >= max` check permanently

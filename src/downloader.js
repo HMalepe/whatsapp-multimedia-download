@@ -77,11 +77,11 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
 function buildFormatSelector() {
   const h = config.targetHeight;
   return [
-    `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]`,
+    `bv*[height<=${h}][ext=mp4]+ba*[ext=m4a]`,
     `best[height<=${h}][ext=mp4]`,
-    `bestvideo[height<=${h}][ext=mov]+bestaudio[ext=m4a]`,
+    `bv*[height<=${h}][ext=mov]+ba*[ext=m4a]`,
     `best[height<=${h}][ext=mov]`,
-    `bestvideo[height<=${h}]+bestaudio`,
+    `bv*[height<=${h}]+ba*`,
     `best[height<=${h}]`,
     'best',
   ].join('/');
