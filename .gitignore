@@ -3,3 +3,8 @@ downloads/
 data/
 .env
 *.log
+
+# Real login-session cookies (YouTube/Google, etc.) -- these belong only in Railway's
+# COOKIES_BASE64 environment variable, never in the repo or its git history.
+cookies*.txt
+cookies_*.txt
