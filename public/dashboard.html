@@ -413,7 +413,7 @@
       <form class="paste-form" id="pasteForm">
         <div class="paste-input-wrap">
           <input id="pasteUrl" type="url" inputmode="url" autocomplete="off"
-                 placeholder="Paste a YouTube, TikTok, X, Instagram, Facebook, Reddit or LinkedIn link…" required />
+                 placeholder="Paste a TikTok, X, Instagram, Facebook, Reddit or LinkedIn link…" required />
         </div>
         <button type="submit" id="pasteBtn">
           <span class="btn-spinner"></span>
@@ -844,7 +844,12 @@
     }
 
     async function retryJob(id) {
-      await fetch(`/api/jobs/${id}/retry`, { method: 'POST', headers: { 'X-Vault-Fetch': '1' } });
+      const res = await fetch(`/api/jobs/${id}/retry`, { method: 'POST', headers: { 'X-Vault-Fetch': '1' } });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast('Could not retry', data.error || 'Something went wrong.');
+        return;
+      }
       fetchJobs();
     }
 

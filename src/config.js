@@ -26,7 +26,7 @@ const config = {
   port: numEnv('PORT', 3000, { min: 1 }),
   // Netscape-format cookies.txt content, base64-encoded, exported from a logged-in browser.
   // This lets yt-dlp fetch content that requires being logged in (most LinkedIn videos,
-  // some Instagram/Facebook/X posts, age-gated YouTube videos). See README for how to export.
+  // some Instagram/Facebook/X posts). See README for how to export.
   cookiesBase64: process.env.COOKIES_BASE64 || null,
   // Path to an existing cookies.txt on disk (e.g. a Railway volume mount), as an
   // alternative to COOKIES_BASE64. YTDLP_COOKIES_PATH is accepted as an alias.

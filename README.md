@@ -5,7 +5,6 @@ downloaded at 720p (`TARGET_HEIGHT`), preferring MP4 or MOV, always at full leng
 trimmed. Trim any downloaded video into a GIF right there in the browser. Powered by
 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) under the hood, so it works with links from:
 
-- YouTube
 - TikTok
 - X / Twitter
 - Instagram
@@ -13,6 +12,12 @@ trimmed. Trim any downloaded video into a GIF right there in the browser. Powere
 - Reddit
 - LinkedIn (public video posts only — LinkedIn frequently requires login, so this is the
   least reliable of the set)
+
+**YouTube is intentionally not supported.** YouTube's bot-detection blocks anonymous
+server requests (like this app's) often enough that it's not reliably usable without
+cookies from a real logged-in session, re-exported every time the session goes stale —
+more upkeep than this project is worth. A YouTube link is rejected up front with a clear
+message rather than silently queuing a job that's likely to fail.
 
 This is the MVP: **a dashboard, full stop.** WhatsApp/Twilio integration is optional —
 see "Part 2" below — and off by default.

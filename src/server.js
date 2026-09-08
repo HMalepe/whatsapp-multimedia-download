@@ -4,7 +4,7 @@ const path = require('path');
 const { v4: uuid } = require('uuid');
 
 const config = require('./config');
-const { extractUrl, detectPlatform } = require('./helpers');
+const { extractUrl, detectPlatform, isUnsupportedPlatform } = require('./helpers');
 const {
   requireDashboardAuth,
   checkCredentials,
@@ -142,6 +142,10 @@ app.get('/gifs/:file', requireDashboardAuth, (req, res) => {
 });
 
 // --- Job lifecycle -------------------------------------------------------------------
+
+const YOUTUBE_UNSUPPORTED_MESSAGE =
+  "YouTube isn't supported -- its bot-detection blocks this server's requests too often " +
+  'to be reliable. TikTok, X/Twitter, Instagram, Facebook, Reddit, and LinkedIn all work.';
 
 // Kicks off a job: records it in history immediately (so it shows up in the dashboard
 // as "queued" right away) and queues the actual work behind MAX_CONCURRENT_JOBS.
@@ -367,6 +371,9 @@ app.post('/api/jobs', requireDashboardAuth, requireSameOriginFetch, (req, res) =
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return res.status(400).json({ error: 'Enter a valid video link.' });
   }
+  if (isUnsupportedPlatform(url)) {
+    return res.status(400).json({ error: YOUTUBE_UNSUPPORTED_MESSAGE });
+  }
 
   const jobId = startJob(url, null);
   res.json({ ok: true, jobId });
@@ -383,6 +390,9 @@ app.delete('/api/jobs/:id', requireDashboardAuth, requireSameOriginFetch, async 
 app.post('/api/jobs/:id/retry', requireDashboardAuth, requireSameOriginFetch, (req, res) => {
   const job = jobsStore.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
+  if (isUnsupportedPlatform(job.url)) {
+    return res.status(400).json({ error: YOUTUBE_UNSUPPORTED_MESSAGE });
+  }
   const jobId = startJob(job.url, job.from);
   res.json({ ok: true, jobId });
 });
@@ -485,7 +495,12 @@ if (config.whatsappEnabled) {
 
     const url = extractUrl(body);
     if (!url) {
-      twiml.message('Send me a video link (YouTube, TikTok, X/Twitter, Instagram, Facebook, Reddit, or LinkedIn) and I\'ll send the video back.');
+      twiml.message('Send me a video link (TikTok, X/Twitter, Instagram, Facebook, Reddit, or LinkedIn) and I\'ll send the video back.');
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+    if (isUnsupportedPlatform(url)) {
+      twiml.message(YOUTUBE_UNSUPPORTED_MESSAGE);
       res.type('text/xml').send(twiml.toString());
       return;
     }
