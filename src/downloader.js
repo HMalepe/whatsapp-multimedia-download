@@ -143,15 +143,51 @@ async function locateDownloadedFile(jobId) {
   return path.join(config.downloadDir, match);
 }
 
+// A codec-copy remux can succeed (exit 0) while still leaving VP9/AV1 video or Opus audio
+// inside the .mp4 container -- ffmpeg and desktop players don't care, but iOS's native
+// player/QuickLook only reliably plays h264 video + aac audio and otherwise just shows a
+// blank preview with no error. So a successful remux isn't enough; the resulting codecs
+// have to actually be checked before trusting the fast path.
+async function probeCodec(filePath, streamSelector) {
+  try {
+    const { stdout } = await run('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      streamSelector,
+      '-show_entries',
+      'stream=codec_name',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ]);
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+async function isAppleCompatibleMp4(filePath) {
+  const videoCodec = await probeCodec(filePath, 'v:0');
+  if (videoCodec !== 'h264') return false;
+  const audioCodec = await probeCodec(filePath, 'a:0');
+  return audioCodec === 'aac' || audioCodec === '';
+}
+
 async function ensureMp4(filePath, jobId) {
   if (filePath.toLowerCase().endsWith('.mp4')) return filePath;
 
   const target = path.join(config.downloadDir, `${jobId}.mp4`);
-  try {
-    await run('ffmpeg', ['-y', '-i', filePath, '-c', 'copy', target], { timeoutMs: 5 * 60 * 1000 });
-  } catch {
-    // Codecs aren't mp4-compatible even via remux (e.g. AV1/VP9 video, Opus audio) --
-    // fall back to a real re-encode into universally-playable h264/aac.
+  const copied = await run('ffmpeg', ['-y', '-i', filePath, '-c', 'copy', target], {
+    timeoutMs: 5 * 60 * 1000,
+  })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!copied || !(await isAppleCompatibleMp4(target))) {
+    // Codecs aren't actually h264/aac even though the container remuxed fine (e.g.
+    // AV1/VP9 video, Opus audio) -- fall back to a real re-encode into universally-playable
+    // h264/aac so it plays on iOS, not just on lenient desktop players.
     await run(
       'ffmpeg',
       ['-y', '-i', filePath, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', target],
