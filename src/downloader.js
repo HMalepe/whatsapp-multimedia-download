@@ -148,7 +148,7 @@ async function locateDownloadedFile(jobId) {
 // player/QuickLook only reliably plays h264 video + aac audio and otherwise just shows a
 // blank preview with no error. So a successful remux isn't enough; the resulting codecs
 // have to actually be checked before trusting the fast path.
-async function probeCodec(filePath, streamSelector) {
+async function probeStreamEntry(filePath, streamSelector, entry) {
   try {
     const { stdout } = await run('ffprobe', [
       '-v',
@@ -156,7 +156,7 @@ async function probeCodec(filePath, streamSelector) {
       '-select_streams',
       streamSelector,
       '-show_entries',
-      'stream=codec_name',
+      `stream=${entry}`,
       '-of',
       'csv=p=0',
       filePath,
@@ -168,9 +168,15 @@ async function probeCodec(filePath, streamSelector) {
 }
 
 async function isAppleCompatibleMp4(filePath) {
-  const videoCodec = await probeCodec(filePath, 'v:0');
+  const videoCodec = await probeStreamEntry(filePath, 'v:0', 'codec_name');
   if (videoCodec !== 'h264') return false;
-  const audioCodec = await probeCodec(filePath, 'a:0');
+  // codec_name alone isn't enough -- a 10-bit source (e.g. some phone/screen recordings)
+  // can already be h264 but in "High 10" profile via a non-standard pix_fmt, which iOS's
+  // hardware decoder can't play any better than it plays VP9/AV1. Only plain 8-bit yuv420p
+  // is guaranteed to decode.
+  const pixFmt = await probeStreamEntry(filePath, 'v:0', 'pix_fmt');
+  if (pixFmt !== 'yuv420p') return false;
+  const audioCodec = await probeStreamEntry(filePath, 'a:0', 'codec_name');
   return audioCodec === 'aac' || audioCodec === '';
 }
 
@@ -187,10 +193,27 @@ async function ensureMp4(filePath, jobId) {
   if (!copied || !(await isAppleCompatibleMp4(target))) {
     // Codecs aren't actually h264/aac even though the container remuxed fine (e.g.
     // AV1/VP9 video, Opus audio) -- fall back to a real re-encode into universally-playable
-    // h264/aac so it plays on iOS, not just on lenient desktop players.
+    // h264/aac so it plays on iOS, not just on lenient desktop players. -pix_fmt yuv420p is
+    // required, not cosmetic: Debian's ffmpeg ships a 10-bit-capable libx264, so a 10-bit
+    // source (common from AV1/VP9) would otherwise silently re-encode into H.264 "High 10"
+    // profile, which iOS's hardware decoder can't play at all -- it just drops the video
+    // track and plays audio only, with no error anywhere.
     await run(
       'ffmpeg',
-      ['-y', '-i', filePath, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', target],
+      [
+        '-y',
+        '-i',
+        filePath,
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-preset',
+        'fast',
+        '-c:a',
+        'aac',
+        target,
+      ],
       { timeoutMs: 15 * 60 * 1000 }
     );
   }
@@ -269,6 +292,9 @@ async function compressToFit(inputPath, maxBytes, jobId, knownDurationSeconds) {
       inputPath,
       '-c:v',
       'libx264',
+      // Forces 8-bit output -- see ensureMp4's re-encode for why this matters on iOS.
+      '-pix_fmt',
+      'yuv420p',
       '-b:v',
       `${videoBitrateKbps}k`,
       '-maxrate',
