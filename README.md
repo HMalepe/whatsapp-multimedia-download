@@ -5,7 +5,6 @@ downloaded at 720p (`TARGET_HEIGHT`), preferring MP4 or MOV, always at full leng
 trimmed. Trim any downloaded video into a GIF right there in the browser. Powered by
 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) under the hood, so it works with links from:
 
-- YouTube (needs cookies to reliably get past bot-detection — see "Improving reliability")
 - TikTok
 - X / Twitter
 - Instagram
@@ -14,6 +13,12 @@ trimmed. Trim any downloaded video into a GIF right there in the browser. Powere
 - Reddit
 - LinkedIn (public video posts only — LinkedIn frequently requires login, so this is the
   least reliable of the set)
+
+**YouTube is intentionally not supported.** YouTube's bot-detection blocks anonymous
+server requests (like this app's) often enough that it's not reliably usable without
+cookies from a real logged-in session, re-exported every time the session goes stale —
+more upkeep than this project is worth. A YouTube link is rejected up front with a clear
+message rather than silently queuing a job that's likely to fail.
 
 This is the MVP: **a dashboard, full stop.** WhatsApp/Twilio integration is optional —
 see "Part 2" below — and off by default.
@@ -112,10 +117,10 @@ Most download failures aren't missing `yt-dlp` support — they're login walls o
 bot-detection. Two things close most of that gap:
 
 1. **Cookies from a logged-in browser session.** This is the biggest lever, especially for
-   YouTube and LinkedIn, and it also helps Instagram, Facebook, and X for content that's
-   rate-limited or gated for anonymous requests:
+   LinkedIn, and it also helps Instagram, Facebook, and X for content that's rate-limited or
+   gated for anonymous requests:
    - Install a browser extension like "Get cookies.txt LOCALLY" (Chrome/Firefox).
-   - Log into youtube.com / linkedin.com / instagram.com / x.com / facebook.com in that browser.
+   - Log into linkedin.com / instagram.com / x.com / facebook.com in that browser.
    - Export cookies for each site into one combined `cookies.txt` (Netscape format).
    - Base64-encode it and set it as `COOKIES_BASE64` in your environment:
      `base64 -w0 cookies.txt` (macOS: `base64 -i cookies.txt`).
@@ -123,9 +128,6 @@ bot-detection. Two things close most of that gap:
    - Since these are *your own* session cookies giving the bot access to *your own* logged-in
      view, treat `COOKIES_BASE64` as a secret — only set it via Railway's environment
      variables, never commit it. Re-export periodically, as sites expire login sessions.
-   - **YouTube specifically**: even with cookies, bot-detection can still flare back up —
-     it isn't a permanent switch, and no cookie fixes a block based on the server's IP
-     reputation alone. Treat this as "closes most of the gap," not "closes it forever."
    - **Facebook Stories specifically**: a Story is only visible to the actual friends/
      followers of whichever account's cookies you use — if your account can't see it logged
      in, no cookie or code change makes it downloadable.
