@@ -30,14 +30,4 @@ function detectPlatform(url) {
   return { key: 'other', label: 'Other', color: '#8b8fa3' };
 }
 
-// YouTube's bot-detection blocks anonymous/datacenter requests (like this app's server IP)
-// unfrequently enough to look "fixed" for a while, then comes back with no code change on
-// our end -- durably beating it needs cookies from a real logged-in session, re-exported
-// periodically, which isn't worth the upkeep for this app. Every other supported platform
-// doesn't have this problem, so new YouTube submissions are rejected up front with a clear
-// reason instead of silently queuing a job that's likely to fail.
-function isUnsupportedPlatform(url) {
-  return detectPlatform(url).key === 'youtube';
-}
-
-module.exports = { extractUrl, detectPlatform, isUnsupportedPlatform };
+module.exports = { extractUrl, detectPlatform };
