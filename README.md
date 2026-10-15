@@ -168,12 +168,21 @@ to open the dashboard at all:
      `X-Vault-Fetch: 1`
    - Request Body → JSON → add a field `url` whose value is **Shortcut Input**
      (tap the field, choose the magic-variable icon → "Shortcut Input").
-3. Tap the shortcut's settings (ⓘ) → turn on **"Use with Share Sheet"**, and set the
+3. Add a **"Get Dictionary Value"** action, set to get the value for key `error` from
+   **Contents of URL** (the output of the previous action).
+4. Add an **"If"** action: **Has Any Value** → the dictionary value from step 3.
+   - Under the **If** branch, add **"Show Notification"** with text
+     **"❌ Failed"** and a second line using that same `error` value, so the actual reason
+     (e.g. "YouTube isn't supported...") shows up instead of a silent failure.
+   - Under the **Otherwise** branch, add **"Show Notification"** with text
+     **"✅ Started"** — optionally include **Shortcut Input** (the URL) as a second line.
+5. Tap the shortcut's settings (ⓘ) → turn on **"Use with Share Sheet"**, and set the
    accepted type to **URLs**.
-4. Name it something like "Download with Video Vault".
-5. From any app, share a video's link → **Video Vault** shows up in the Share Sheet →
-   tap it → the download starts immediately, same as pasting the link into the dashboard.
-   (On Twitter/X specifically: tap the share icon on a tweet → Share via... → Video Vault.)
+6. Name it something like "Download with Video Vault".
+7. From any app, share a video's link → **Video Vault** shows up in the Share Sheet →
+   tap it → a notification confirms whether the download started or why it didn't, same
+   as pasting the link into the dashboard. (On Twitter/X specifically: tap the share icon
+   on a tweet → Share via... → Video Vault.)
 
 `API_KEY` is checked the same way a login session is everywhere in the app, so this isn't
 a separate, lesser-guarded door — it's just a credential a Shortcut can hold onto that a
