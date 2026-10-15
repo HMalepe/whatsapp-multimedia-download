@@ -152,6 +152,33 @@ placement earlier in the Dockerfile would otherwise silently pin forever. If dow
 used to work suddenly all fail with a 403, an empty push (`git commit --allow-empty -m
 "bump yt-dlp" && git push`) forces a fresh deploy and picks up the latest release.
 
+## iOS Share Sheet automation
+
+Start a download straight from the Share Sheet in Twitter/X, Safari, or any app — no need
+to open the dashboard at all:
+
+1. Set `API_KEY` in Railway to a long random value (`openssl rand -hex 32`). This is a
+   second, separate credential from `DASHBOARD_USER`/`DASHBOARD_PASSWORD`, meant for
+   automation rather than a person typing a password — keep it secret the same way.
+2. On your iPhone, open the **Shortcuts** app → **+** → add a **"Get Contents of URL"**
+   action:
+   - URL: `https://<your-domain>/api/jobs`
+   - Method: `POST`
+   - Headers: `Content-Type: application/json`, `X-Api-Key: <your API_KEY>`,
+     `X-Vault-Fetch: 1`
+   - Request Body → JSON → add a field `url` whose value is **Shortcut Input**
+     (tap the field, choose the magic-variable icon → "Shortcut Input").
+3. Tap the shortcut's settings (ⓘ) → turn on **"Use with Share Sheet"**, and set the
+   accepted type to **URLs**.
+4. Name it something like "Download with Video Vault".
+5. From any app, share a video's link → **Video Vault** shows up in the Share Sheet →
+   tap it → the download starts immediately, same as pasting the link into the dashboard.
+   (On Twitter/X specifically: tap the share icon on a tweet → Share via... → Video Vault.)
+
+`API_KEY` is checked the same way a login session is everywhere in the app, so this isn't
+a separate, lesser-guarded door — it's just a credential a Shortcut can hold onto that a
+browser session cookie can't.
+
 ## Limitations
 
 - **Long videos have a real ceiling.** If a video still can't fit under `MAX_MEDIA_MB` even
@@ -167,6 +194,9 @@ used to work suddenly all fail with a 403, an empty push (`git commit --allow-em
   behind a login (`/login`) once `DASHBOARD_USER`/`DASHBOARD_PASSWORD` are set. It's disabled
   entirely (every route 401/404s with a message telling you to set them) until you do. A
   login locks out further attempts from the same IP for 15 minutes after 10 wrong passwords.
+  Setting `API_KEY` (see "iOS Share Sheet automation") adds a second way in via the
+  `X-Api-Key` header — it's optional, off by default, and carries the same access as a
+  logged-in session, so treat it as seriously as the dashboard password.
 
 ## Part 2 (optional): WhatsApp via Twilio
 

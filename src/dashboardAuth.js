@@ -135,6 +135,14 @@ function requireDashboardAuth(req, res, next) {
     return next();
   }
 
+  // Lets automation (an iOS Shortcut, a script) authenticate without a browser session --
+  // a long, random API_KEY is meant to be hard to brute-force, so no lockout/rate-limit is
+  // needed here the way the password login has one.
+  const apiKey = req.get('X-Api-Key');
+  if (config.apiKey && typeof apiKey === 'string' && safeEqual(apiKey, config.apiKey)) {
+    return next();
+  }
+
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Not signed in.' });
   }

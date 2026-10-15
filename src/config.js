@@ -48,6 +48,11 @@ const config = {
   dashboardUser: process.env.DASHBOARD_USER || null,
   dashboardPassword: process.env.DASHBOARD_PASSWORD || null,
   dashboardEnabled: Boolean(process.env.DASHBOARD_USER && process.env.DASHBOARD_PASSWORD),
+  // Optional long-lived credential for automation (e.g. an iOS Shortcut) that can't carry a
+  // browser login session around. Sent as an X-Api-Key header, accepted anywhere a session
+  // cookie would be. Unset by default -- automation access is opt-in, not implied by the
+  // dashboard login existing.
+  apiKey: process.env.API_KEY || null,
   // How long job history (metadata + thumbnail) is kept after the video file itself has
   // expired and been deleted -- independent of, and longer than, FILE_TTL_MINUTES.
   dashboardHistoryMs: numEnv('DASHBOARD_HISTORY_DAYS', 7, { min: 1 }) * 24 * 60 * 60 * 1000,
